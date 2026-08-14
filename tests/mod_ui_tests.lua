@@ -584,7 +584,9 @@ check(not fpm.submenu and forced == fgame.save.party[1],
 -- ------- issues #320/#385: the STRENGTH texts print over the party menu
 do
   local owStub = { strengthActive = false,
-                   map = { def = { tileset = "OVERWORLD" } }, dark = false }
+                   map = { def = { tileset = "OVERWORLD" } }, dark = false,
+                   partyKnows = function(self, id) return self.knows == id end,
+                   knows = "STRENGTH" }
   local sgame = partyGame()
   sgame.overworld = owStub
   sgame.data.text = {} -- the strength texts fall back to Strings sources
@@ -1017,8 +1019,10 @@ press(ms, "select")
 check(avail[1].enabled == false, "SELECT quick-toggles the focused mod")
 check(ms:isStaged(avail[1]), "a flip against boot state is staged")
 check(ms:glyphFor(avail[1]) == ".", "staged mods show the staged glyph")
-check(mgame.save.options.mods.badmod == false,
-  "the live options table mirrors the flip")
+local managerScope = ms:enableScope()
+check(managerScope and mgame.save.options.modsByVersion
+  and mgame.save.options.modsByVersion[managerScope].badmod == false,
+  "the live options table mirrors the flip for this game")
 check(ms.restartPending, "staged changes arm the apply screen")
 ms:discardChanges()
 check(avail[1].enabled == true and not ms.restartPending,
@@ -1159,6 +1163,18 @@ check(#seedOpts.modProfiles == 1 and seedOpts.modProfiles[1].name == "PROFILE 1"
 seedOpts.modProfiles = {}
 ModProfile.ensureFirst(seedOpts, ms.status.available, {})
 check(#seedOpts.modProfiles == 0, "seeding never runs twice")
+
+local LauncherMods = require("src.mods.LauncherMods")
+local testProfOpts = { activeProfile = "P1", modProfiles = { { name = "P1", enabled = { a = true } } } }
+local dupSnap = LauncherMods.duplicateProfile("P1", testProfOpts)
+check(dupSnap and dupSnap.name == "P1 (Copy)" and testProfOpts.activeProfile == "P1 (Copy)",
+  "duplicateProfile creates P1 (Copy) and activates it")
+check(LauncherMods.renameProfile("P1 (Copy)", "RenamedP", testProfOpts) == true,
+  "renameProfile renames active profile")
+check(testProfOpts.activeProfile == "RenamedP", "activeProfile updates on rename")
+check(LauncherMods.deleteProfile("RenamedP", testProfOpts) == true, "deleteProfile removes profile")
+check(#testProfOpts.modProfiles == 1 and testProfOpts.modProfiles[1].name == "P1", "only original profile remains")
+check(testProfOpts.activeProfile == "P1", "activeProfile falls back to remaining profile")
 
 -- permissions rows
 local permy = manifest("permy", { permissions = { "network" } })

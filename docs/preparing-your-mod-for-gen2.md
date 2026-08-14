@@ -258,20 +258,34 @@ row on the detail screen. The launcher's dependency verdict asks the same
 question of your dependencies: a mod whose hard dependency does not run on the
 selected game reads `Needs <id> (not for Gold)` rather than `Ready`.
 
+### Scoping dependencies per game / generation
+
+For mods targeting multiple generations (`"games": ["gen1", "gen2"]`), a hard
+dependency can be scoped to specific games so that it is only enforced when
+booting those games:
+
+```json
+"dependencies": [
+  { "id": "pokegear_cards", "games": ["gen2"], "range": "^1.0.0", "github": "1jamie/pokegear_cards" }
+]
+```
+
+When booting a Gen 1 game (Red, Blue, Yellow), the engine loader sees that
+`pokegear_cards` is scoped to `"gen2"` and will not skip or block the parent mod
+on Gen 1. When booting Gen 2 (Gold), `pokegear_cards` is strictly required.
+
+For conditional integrations where the dependency is optional across the board,
+`optional_dependencies` remains the standard pattern.
+
 ### One limit worth knowing
 
-**Per-game enable flags are still a preview.** The overlay
-`options.modsByVersion[version][id]` exists and every surface goes through
-`SaveData.modEnabled` / `SaveData.setModEnabled`, but
-`SaveData.PER_VERSION_MODS` is `false`
-(`src/core/SaveData.lua:489`). While it is false, `SaveData.modScope` answers
-nil for every caller, so the launcher panel, the in-game manager *and* the
-loader all read and write the one shared `options.mods` flag and the overlay is
-not consulted for enablement anywhere. That matters because the overlay is
-plantable from an imported `.g1rmodlist`: keeping every reader on the same
-scope as every writer is what stops a stored per-game flag from showing a mod
-set no boot would honour. Nothing about this affects a mod author; it affects
-what a player can currently express.
+**Enablement is per game.** The overlay
+`options.modsByVersion[version][id]` is read and written through
+`SaveData.modEnabled` / `SaveData.setModEnabled` by the launcher, in-game
+manager, and loader. Existing shared settings are copied to every game the
+first time this version sees the installed mods; from then on, each coloured
+game checkbox changes only that game's next boot. Nothing about this affects a
+mod author; it affects what a player can express.
 
 Targeting is a different question from enablement and *is* enforced per game,
 as above. The two do not share a switch.
@@ -311,7 +325,7 @@ This is not a dev-mode feature; it installs on any Gold boot that has mods.
 | `src.pokemon.Boxes` | facade | over `src/core/gen2/Boxes.lua` | 22 / 0 / 0 |
 | `src.battle.BattleState` | facade | over `src/ui/gen2/BattleState.lua` | 16 / 2 / 39 |
 | `src.ui.PartyMenu` | facade | over `src/ui/gen2/PartyMenu.lua` | 15 / 2 / 16 |
-| `src.world.WorldAPI` | alias | `src/world/gen2/WorldAPI.lua` | 12 / 2 / 0 |
+| `src.world.WorldAPI` | alias | `src/world/gen2/WorldAPI.lua` | 15 / 2 / 0 |
 | `src.world.PikachuFollower` | alias | `src/world/gen2/Follower.lua` | 10 / 0 / 11 |
 | `src.script.ScriptRunner` | facade | over `src/script/gen2/Vm.lua` | 10 / 7 / 1 |
 | `src.ui.OptionsMenu` | facade | over `src/ui/gen2/OptionsMenu.lua` | 8 / 0 / 1 |
@@ -760,7 +774,7 @@ profile to test in, and `POKEPORT_DEV=1` adds the console and `F5` hot reload.
 
 - **Coverage is partial and will stay partial.** 15 Gen 1 modules are served
   out of a much larger engine, and within those 15 the coverage table records
-  288 backed members against 32 warned and 161 absent. The absent ones are not
+  291 backed members against 32 warned and 161 absent. The absent ones are not
   a backlog; most are absent because there is no honest Gen 2 answer, and each
   one carries its reason. The counts move as the adapter learns something: a
   member that turns out to answer nil is demoted from backed to warned or

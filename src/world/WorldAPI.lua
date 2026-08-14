@@ -6,8 +6,8 @@
 -- stays unsupported; anything a mod legitimately needs belongs here.
 
 local Logger = require("src.core.Logger")
-local Assets = require("src.render.Assets")
 local MapLoader = require("src.world.MapLoader")
+local MapOverview = require("src.world.MapOverview")
 local Party = require("src.pokemon.Party")
 local Runtime = require("src.mods.Runtime")
 
@@ -15,59 +15,7 @@ local WorldAPI = {}
 WorldAPI.__index = WorldAPI
 
 local NO_OVERWORLD = "no overworld"
-local overviewShades = {}
-
-Assets.register(function() overviewShades = {} end)
-
-local function shadeDigit(sum, pixelCount)
-  return tostring(math.max(0, math.min(3,
-    math.floor((1 - sum / pixelCount) * 3 + 0.5))))
-end
-
-local function mapTileRows(map)
-  local tileset = map.tileset
-  if not (tileset and tileset.image and tileset.tilesPerRow) then return nil end
-  local cached = overviewShades[tileset.image]
-  if not cached then
-    local ok, pixels = pcall(Assets.imageData, tileset.image)
-    if not ok then return nil end
-    cached = { pixels = pixels, shades = {} }
-    overviewShades[tileset.image] = cached
-  end
-  local rows, detailRows, perRow = {}, {}, tileset.tilesPerRow
-  for ty = 0, map.heightCells * 2 - 1 do
-    local row, detailTop, detailBottom = {}, {}, {}
-    for tx = 0, map.widthCells * 2 - 1 do
-      local tile = map:tileAt(tx, ty)
-      local shades = cached.shades[tile]
-      if shades == nil then
-        local sums = { 0, 0, 0, 0 }
-        local ox, oy = (tile % perRow) * 8, math.floor(tile / perRow) * 8
-        for py = 0, 7 do
-          for px = 0, 7 do
-            local r, g, b = cached.pixels:getPixel(ox + px, oy + py)
-            local quadrant = math.floor(py / 4) * 2 + math.floor(px / 4) + 1
-            sums[quadrant] = sums[quadrant]
-              + r * 0.2126 + g * 0.7152 + b * 0.0722
-          end
-        end
-        shades = {
-          shadeDigit(sums[1] + sums[2] + sums[3] + sums[4], 64),
-          shadeDigit(sums[1], 16), shadeDigit(sums[2], 16),
-          shadeDigit(sums[3], 16), shadeDigit(sums[4], 16),
-        }
-        cached.shades[tile] = shades
-      end
-      row[#row + 1] = shades[1]
-      detailTop[#detailTop + 1] = shades[2] .. shades[3]
-      detailBottom[#detailBottom + 1] = shades[4] .. shades[5]
-    end
-    rows[#rows + 1] = table.concat(row)
-    detailRows[#detailRows + 1] = table.concat(detailTop)
-    detailRows[#detailRows + 1] = table.concat(detailBottom)
-  end
-  return rows, detailRows
-end
+local RODS = { "OLD_ROD", "GOOD_ROD", "SUPER_ROD" }
 
 local function acceptsMenuInput(game, ow)
   local stack = game and game.stack
@@ -139,6 +87,60 @@ function WorldAPI:reorderParty(fromSlot, toSlot)
   return true
 end
 
+-- Contextual field-item shortcuts. Only actions that can start immediately
+-- are listed; callers receive copied labels and never inspect world internals.
+function WorldAPI:availableFieldActions()
+  local game, ow, out = self.game, self:overworld(), {}
+  if not (game and game.save and ow and ow.map and ow.player)
+      or not acceptsMenuInput(game, ow) then return out end
+  local save, inventory = game.save, game.save.inventory or {}
+  local items = game.data and game.data.items or {}
+
+  if (inventory.BICYCLE or 0) > 0 and not ow.player.surfing
+      and not (save.onBike and save.forcedBike)
+      and (save.onBike or ow:bikeAllowed(ow.map.id)) then
+    out[#out + 1] = { id = "bicycle",
+      label = save.onBike and "BIKE OFF" or "BICYCLE" }
+  end
+
+  if not ow.player.surfing and ow:facingIsShoreOrWater() then
+    local rods = {}
+    for _, id in ipairs(RODS) do
+      if (inventory[id] or 0) > 0 then
+        local def = items[id]
+        rods[#rods + 1] = { id = id, label = def and def.name or id }
+      end
+    end
+    if #rods > 0 then
+      out[#out + 1] = { id = "fish", label = "FISH", rods = rods }
+    end
+  end
+  return out
+end
+
+function WorldAPI:useFieldAction(id, opts)
+  local game, ow = self.game, self:overworld()
+  if not ow then return nil, NO_OVERWORLD end
+  if not acceptsMenuInput(game, ow) then return nil, "world is busy" end
+  local found
+  for _, action in ipairs(self:availableFieldActions()) do
+    if action.id == id then found = action break end
+  end
+  if not found then return nil, "field action unavailable" end
+
+  if id == "bicycle" then
+    if ow:useBicycle() then return true end
+  elseif id == "fish" then
+    local rod = opts and opts.rod
+    if not rod and #found.rods == 1 then rod = found.rods[1].id end
+    for _, choice in ipairs(found.rods) do
+      if choice.id == rod and ow:useFishingRod(rod) then return true end
+    end
+    return nil, "fishing rod unavailable"
+  end
+  return nil, "field action unavailable"
+end
+
 -- A compact, read-only view of the active map for minimaps and companion UIs.
 -- `rows` describes collision terrain; optional `tileRows` reduces each real
 -- 8x8 map tile to its average Game Boy shade ("0" lightest, "3" darkest).
@@ -147,16 +149,7 @@ end
 function WorldAPI:mapOverview()
   local ow = self:overworld()
   if not ow or not ow.map then return nil, NO_OVERWORLD end
-  local map, rows, markers = ow.map, {}, {}
-  for y = 0, map.heightCells - 1 do
-    local row = {}
-    for x = 0, map.widthCells - 1 do
-      row[#row + 1] = map:isWarpTileCell(x, y) and "+"
-        or map:isWaterCell(x, y) and "~"
-        or map:isWalkableCell(x, y) and "." or " "
-    end
-    rows[#rows + 1] = table.concat(row)
-  end
+  local map, markers = ow.map, {}
   local def = map.def or {}
   for _, warp in ipairs(def.warps or {}) do
     markers[#markers + 1] = { kind = "warp", x = warp.x, y = warp.y }
@@ -175,15 +168,7 @@ function WorldAPI:mapOverview()
       markers[#markers + 1] = { kind = "hidden", x = item.x, y = item.y }
     end
   end
-  local tileRows, tileDetailRows = mapTileRows(map)
-  return { mapId = map.id, width = map.widthCells,
-           height = map.heightCells, rows = rows, markers = markers,
-           tileRows = tileRows,
-           tileWidth = tileRows and map.widthCells * 2,
-           tileHeight = tileRows and map.heightCells * 2,
-           tileDetailRows = tileDetailRows,
-           tileDetailWidth = tileDetailRows and map.widthCells * 4,
-           tileDetailHeight = tileDetailRows and map.heightCells * 4 }
+  return MapOverview.build(map, markers)
 end
 
 -- opts.arrive = "fly" | "teleport" picks the arrival FX; anything else

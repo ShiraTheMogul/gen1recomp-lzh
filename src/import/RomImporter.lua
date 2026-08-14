@@ -1228,8 +1228,8 @@ function RomImporter.new(onComplete, opts)
     saveNotice = {},
     -- MODS panel state (pass 3): mods is the cached LauncherMods.list() array
     -- (refreshed lazily on first draw and after any toggle/install/delete);
-    -- modScroll is the list scroll offset (px, clamped in draw); modNotice is
-    -- the last install/delete result { ok, text } shown as a line above the list.
+    -- modScroll is the current paged list's inner scroll offset (px, clamped
+    -- in draw); modNotice is the last install/delete result { ok, text }.
     mods = nil, modScroll = 0, modNotice = nil,
     -- Which game the MODS panel is answering for (a GameVersion id, nil =
     -- every game).  Rows resolve their enable-state and their "runs here"
@@ -1649,7 +1649,7 @@ end
 function RomImporter:_installMod(source)
   if self.workState == "working" then return end
   self.tab = "mods"
-  local ok, installed, res = pcall(function()
+  local ok, installed, res, manifest = pcall(function()
     local LauncherMods = require("src.mods.LauncherMods")
     return LauncherMods.installZip(source)
   end)
@@ -1661,6 +1661,17 @@ function RomImporter:_installMod(source)
   if installed then
     pcall(self._refreshMods, self)
     self.modNotice = { ok = true, text = "Installed " .. tostring(res) }
+    local LauncherMods = require("src.mods.LauncherMods")
+    local checkTarget = manifest
+    if not checkTarget and type(res) == "string" then
+      checkTarget = { id = res }
+    end
+    if checkTarget and LauncherMods.checkDependencies then
+      local depCheck = LauncherMods.checkDependencies(checkTarget)
+      if depCheck and depCheck.hasIssues then
+        self._modDepResolver = depCheck
+      end
+    end
   else
     self.modNotice = { ok = false, text = tostring(res) }
   end
@@ -2048,6 +2059,15 @@ end
 
 function RomImporter:update(dt)
   self.pulse = self.pulse + dt
+  if self._launchFade then
+    self._launchFade.elapsed = self._launchFade.elapsed + dt
+    if self._launchFade.elapsed >= self._launchFade.duration then
+      local version = self._launchFade.version
+      self._launchFade = nil
+      self:play(version)
+      return
+    end
+  end
   self:_updatePadCursor(dt)
   self:_stepBaseRomScan()
   -- Pump the FlexLove view (input polling + the queued click actions).  The
@@ -2336,6 +2356,20 @@ function RomImporter:_updatePadCursor(dt)
     local ny = self._padCursor.y + dy * speed * dt
     self._padCursor.x = math.max(ox, math.min(ox + w, nx))
     self._padCursor.y = math.max(oy, math.min(oy + h, ny))
+    -- Pushing INTO the top/bottom edge scrolls the page instead of stalling.
+    -- The cursor is clamped to the safe area above, so on a short window the
+    -- rows below the fold are unreachable on a stickless handheld: no mouse
+    -- wheel, no touchscreen, and no right stick to feed the existing wheel
+    -- path.  Only the OVERSHOOT scrolls -- parking the cursor at the edge does
+    -- nothing, it has to be actively pushed -- and this block only runs on pad
+    -- input, so a real mouse is unaffected.  /48 matches the pixels-per-notch
+    -- LauncherView.draw multiplies back out.
+    local overY = 0
+    if ny > oy + h then overY = ny - (oy + h)
+    elseif ny < oy then overY = ny - oy end
+    if overY ~= 0 and self._flex then
+      require("src.import.LauncherView").wheelmoved(self, 0, -overY / 48)
+    end
     -- Desktop: FlexLove polls the real mouse, so warp it with the pad pointer.
     -- NX: the getPosition bridge already returns pad coords — skip setPosition.
     if not self.isNX and love.mouse.setPosition then
@@ -2436,9 +2470,15 @@ function RomImporter:joystickhat(joystick, hat, direction)
 end
 
 -- Player pressed Play on a game whose ROM is imported: hand off to boot.
-function RomImporter:play(version)
+function RomImporter:play(version, fade)
   if self.workState == "working" then return end
   if not self.ready[version] then return end
+  if fade then
+    if not self._launchFade then
+      self._launchFade = { version = version, elapsed = 0, duration = 0.24 }
+    end
+    return
+  end
   self._handedOff = true
   -- #835: remember the game being launched so the next launcher start opens on
   -- its column (_applyLastVersionTab).  It rides options.lua rather than a file
@@ -2652,11 +2692,14 @@ function RomImporter:_openSettings()
   -- hook rather than reaching for main.lua's handler itself.  Closing the
   -- settings panel FIRST persists the pending edits (_closeSettings saves)
   -- and leaves no modal behind the editor to return to.
+  -- The tab rides along: the editor persists the layout into that game's own
+  -- option block, and Gold's is not the flat Gen 1 one (#1100).
   local hooks = {}
   if self.onEditTouchControls then
+    local version = self.tab
     hooks.editTouchControls = function()
       self:_closeSettings()
-      self.onEditTouchControls()
+      self.onEditTouchControls(version)
     end
   end
   -- The tab the gear was opened on decides the row set: Gold reads a
@@ -2698,6 +2741,43 @@ function RomImporter:fileUrl(path)
 end
 
 function RomImporter:keypressed(key)
+  if self._profileSavePrompt then
+    if key == "backspace" then
+      self._profileSavePrompt.text = utf8Back(self._profileSavePrompt.text or "")
+    elseif key == "return" or key == "kpenter" then
+      local txt = self._profileSavePrompt and self._profileSavePrompt.text
+      if txt and txt ~= "" then
+        local LauncherMods = require("src.mods.LauncherMods")
+        LauncherMods.saveProfile(txt)
+        self._profileSavePrompt = nil
+        self:_disarmTextInput()
+        if self._refreshMods then self:_refreshMods() end
+      end
+    elseif key == "escape" then
+      self._profileSavePrompt = nil
+      self:_disarmTextInput()
+    end
+    return
+  end
+  if self._profileRenamePrompt then
+    if key == "backspace" then
+      self._profileRenamePrompt.text = utf8Back(self._profileRenamePrompt.text or "")
+    elseif key == "return" or key == "kpenter" then
+      local txt = self._profileRenamePrompt and self._profileRenamePrompt.text
+      local old = self._profileRenamePrompt and self._profileRenamePrompt.oldName
+      if txt and txt ~= "" and old then
+        local LauncherMods = require("src.mods.LauncherMods")
+        LauncherMods.renameProfile(old, txt)
+        self._profileRenamePrompt = nil
+        self:_disarmTextInput()
+        if self._refreshMods then self:_refreshMods() end
+      end
+    elseif key == "escape" then
+      self._profileRenamePrompt = nil
+      self:_disarmTextInput()
+    end
+    return
+  end
   if self._settingsText then
     if key == "backspace" then
       self._settingsText.text = utf8Back(self._settingsText.text)
@@ -2741,6 +2821,13 @@ function RomImporter:keypressed(key)
   end
   if self._modConfirm or self._modVersions or self._modReleaseNotes
       or self._findDetails then
+    -- Focus navigation belongs to the visible modal as well as the launcher
+    -- beneath it. Route arrows and an already-armed confirm before this guard
+    -- returns; unarmed Enter still falls through to the modal guard. Keep this
+    -- inside the modal branch so text fields retain exclusive keyboard input.
+    if self._flex and require("src.import.LauncherView").keypressed(self, key) then
+      return
+    end
     if key == "escape" then
       if self._findDetails then
         self._findDetails = nil
@@ -2860,6 +2947,14 @@ function RomImporter:_commitRename()
 end
 
 function RomImporter:textinput(text)
+  if self._profileSavePrompt then
+    self._profileSavePrompt.text = utf8Cap((self._profileSavePrompt.text or "") .. text, MAX_SLOT_LABEL)
+    return
+  end
+  if self._profileRenamePrompt then
+    self._profileRenamePrompt.text = utf8Cap((self._profileRenamePrompt.text or "") .. text, MAX_SLOT_LABEL)
+    return
+  end
   if self._settingsText then
     local st = self._settingsText
     st.text = utf8Cap(st.text .. text, st.maxLen or MAX_SLOT_LABEL)
@@ -3054,15 +3149,19 @@ function RomImporter:_modUpdateInfo(id)
   return self.modUpdateInfo and self.modUpdateInfo[id] or nil
 end
 
--- Flip a mod's enabled flag (persisted via LauncherMods.setEnabled) and relist
--- so the toggle, count, and every status chip reflect the new resolution.
--- Enabling an experimental mod arms a confirm first.
-function RomImporter:_toggleMod(id, confirmed)
+-- Flip one game's mod flag (persisted via LauncherMods.setEnabled) and relist
+-- so that game's checkbox and status chips reflect the new resolution.
+-- Enabling an experimental mod arms a confirmation for that same game.
+function RomImporter:_toggleMod(id, confirmed, version)
   local LauncherMods = require("src.mods.LauncherMods")
   local cur, experimental = false, false
   for _, m in ipairs(self.mods or {}) do
     if m.id == id then
-      cur = m.enabled
+      if version and m.enabledByVersion then
+        cur = m.enabledByVersion[version] == true
+      else
+        cur = m.enabled
+      end
       experimental = m.experimental == true
       break
     end
@@ -3070,7 +3169,7 @@ function RomImporter:_toggleMod(id, confirmed)
   local want = not cur
   if want and experimental and not confirmed then
     self._modConfirm = {
-      kind = "experimental", id = id,
+      kind = "experimental", id = id, version = version,
       title = "Experimental mod",
       yesLabel = "Enable",
       lines = {
@@ -3082,7 +3181,7 @@ function RomImporter:_toggleMod(id, confirmed)
     return
   end
   self._modConfirm = nil
-  LauncherMods.setEnabled(id, want, self.modScope)
+  LauncherMods.setEnabled(id, want, version or self.modScope)
   self:_refreshMods()
 end
 
@@ -3341,6 +3440,76 @@ function RomImporter:_pumpModInstall()
     self.findNotice = { ok = true, text = text }
   else
     self.modNotice = { ok = true, text = text }
+  end
+  local LauncherMods = require("src.mods.LauncherMods")
+  local depCheck = LauncherMods.checkDependencies({ id = spec.modId })
+  if depCheck and depCheck.hasIssues then
+    self._modDepResolver = depCheck
+  end
+end
+
+-- Start an async pull for a single dependency
+function RomImporter:_startDepPull(dep)
+  if not dep or not dep.github then return end
+  self._depPullState = self._depPullState or {}
+  local hFetch = require("src.mods.ModUpdate").beginFetchReleases(dep.github, dep.id, { force = true })
+  self._depPullState[dep.id] = {
+    dep = dep,
+    stage = "fetching",
+    fetchHandle = hFetch,
+  }
+end
+
+-- Pump all in-flight dependency pulls
+function RomImporter:_pumpDepPulls()
+  if not self._depPullState then return end
+  local ModUpdate = require("src.mods.ModUpdate")
+  local LauncherMods = require("src.mods.LauncherMods")
+
+  for depId, state in pairs(self._depPullState) do
+    if state.stage == "fetching" then
+      local done, releases, err = ModUpdate.pumpFetchReleases(state.fetchHandle)
+      if done then
+        if err or not releases or #releases == 0 then
+          state.stage = "error"
+          state.err = err or "No downloadable releases found on GitHub"
+        else
+          local rel = releases[1]
+          if not rel or not rel.zip or not rel.zip.url then
+            state.stage = "error"
+            state.err = "Latest release has no downloadable .zip asset"
+          else
+            local tmpName = ("dep_%s_%s.zip"):format(depId, tostring(rel.version or os.time()))
+            state.dlHandle = ModUpdate.beginDownloadZip(rel.zip.url, tmpName, rel.zip.size)
+            state.stage = "downloading"
+            state.targetVersion = rel.version
+          end
+        end
+      end
+    elseif state.stage == "downloading" then
+      local done, localPath, err, progress = ModUpdate.pumpDownloadZip(state.dlHandle)
+      state.progress = progress
+      if done then
+        if err or not localPath then
+          state.stage = "error"
+          state.err = err or "Download failed"
+        else
+          state.stage = "installing"
+          local okInst, versionRes = LauncherMods.installDownloadedZip(depId, localPath, state.targetVersion)
+          if okInst then
+            state.stage = "done"
+            pcall(self._refreshMods, self)
+            if self._modDepResolver and self._modDepResolver.targetMod then
+              local updated = LauncherMods.checkDependencies(self._modDepResolver.targetMod)
+              self._modDepResolver = updated
+            end
+          else
+            state.stage = "error"
+            state.err = tostring(versionRes or "Installation failed")
+          end
+        end
+      end
+    end
   end
 end
 

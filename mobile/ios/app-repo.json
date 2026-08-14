@@ -1,17 +1,66 @@
 {
-  "name": "gen1recomp App Repo",
-  "identifier": "com.theboisclub.gen1recomp.repo",
+  "name": "gen1recomp++ App Repo",
+  "identifier": "com.theboisclub.gen1recompplusplus.repo",
   "iconURL": "https://raw.githubusercontent.com/bryanthaboi/gen1recomp/main/assets/logo/gen1recomp_cover.png",
   "apps": [
     {
-      "name": "gen1recomp",
-      "bundleIdentifier": "com.theboisclub.gen1recomp",
+      "name": "gen1recomp++",
+      "bundleIdentifier": "com.theboisclub.gen1recompplusplus",
       "developerName": "bryanthaboi",
       "iconURL": "https://raw.githubusercontent.com/bryanthaboi/gen1recomp/main/assets/logo/gen1recomp_cover.png",
       "localizedDescription": "Gen1Recomp - A native Lua / LÖVE2D recreation of Gen 1 Poke",
       "tintColor": "3b5ca8",
       "category": "games",
       "versions": [
+        {
+          "version": "0.1.86",
+          "date": "2026-08-14",
+          "size": 11306689,
+          "downloadURL": "https://github.com/bryanthaboi/gen1recomp/releases/download/v0.1.86/gen1recomp++-0.1.86-ios.ipa",
+          "localizedDescription": "Download the correct version for your computer below.\n\n## Issues closed\n\n- #1283 Intro broken and leading to softlock (R,B,Y currently unplayable without save file)\n\n## Contributors\n\n- @bryanthaboi"
+        },
+        {
+          "version": "0.1.85",
+          "date": "2026-08-14",
+          "size": 11306462,
+          "downloadURL": "https://github.com/bryanthaboi/gen1recomp/releases/download/v0.1.85/gen1recomp++-0.1.85-ios.ipa",
+          "localizedDescription": "Download the correct version for your computer below.\n\n## Contributors\n\n- @bryanthaboi"
+        },
+        {
+          "version": "0.1.84",
+          "date": "2026-08-14",
+          "size": 11306462,
+          "downloadURL": "https://github.com/bryanthaboi/gen1recomp/releases/download/v0.1.84/gen1recomp++-0.1.84-ios.ipa",
+          "localizedDescription": "Download the correct version for your computer below.\n\n## Issues closed\n\n- #919 Bills House game save moves strangely after reload\n- #982 Trading QOL aspect missing from OG.\n- #1003 Land Pokemon Encounters while Surfing in Cerulean Cave\n- #1012 Multiple issues with text speed, animations, and audio\n- #1022 Cannot interact with small trees\n- #1028 Trainers not resetting on route change.\n- #1033 Some issues with Link battles.\n- #1243 Can't sell TMs at Poké Marts\n\n## Contributors\n\n- @1Jamie\n- @AverageConsumer\n- @bryanthaboi\n- @TheRealSolidusSnake\n- Myles Resnick\n- ShaneMcGovernIE"
+        },
+        {
+          "version": "0.1.83",
+          "date": "2026-08-13",
+          "size": 11282300,
+          "downloadURL": "https://github.com/bryanthaboi/gen1recomp/releases/download/v0.1.83/gen1recomp++-0.1.83-ios.ipa",
+          "localizedDescription": "Download the correct version for your computer below.\n\n## Contributors\n\n- @AverageConsumer\n- @bryanthaboi"
+        },
+        {
+          "version": "0.1.82",
+          "date": "2026-08-13",
+          "size": 11281277,
+          "downloadURL": "https://github.com/bryanthaboi/gen1recomp/releases/download/v0.1.82/gen1recomp++-0.1.82-ios.ipa",
+          "localizedDescription": "Download the correct version for your computer below.\n\n## Issues closed\n\n- #914 Immunity steps and no encounter tiles\n- #936 Fly and teleporting allow should block interactions\n- #944 When starting a new game, the character sprite is facing down instead of up\n- #949 Save game import, save game export, \"normal\" save game\n- #964 Menu closing when trying to view Pokemon before picking starter\n- #978 Following up of #847\n- #983 Pikachu incorrectly able to be released\n- #984 EXP calculation after trading a PKMN back isnt right.\n- #987 Celadon Game Corner Display Error (L22680)\n- #988 (Yellow) Missing Pikachu Interaction - Pewter City Pokemon Centre\n- #989 (Yellow) Missing Pikachu Interaction - Vermilion City Pokemon Fan Club\n- #990 (Yellow) Pikachu Missing Hat\n- #999 Pallet Town music while player follows Prof. Oak\n- #1007 Transition into battle state for the 'Catching Pikachu' scene missing\n- #1010 Rival's position resets\n- #1011 Rival dialogue issue\n- #1029 1px black line sits under the title logo at the SGB zone boundary\n- #1035 Alt Music not playing\n- #1041 Mimic text not swoing up\n- #1047 Using a TM or HM closes the menu afterwards.\n- #1048 Cannot select items from the sell menu.\n- #1056 Cursor not jumping when switching moves\n- #1065 Player walks through statue after final battle while walking into Hall Of Fame\n- #1066 Anomalies when opponent switches out Pokemon\n- #1069 missing {RAM:wNameBuffer}\n- #1073 _GotMonText not used\n- #1089 Scripted movement missing for player and rival\n- #1101 Recoil damage calculation bug\n- #1115 Hitting attack does no damage\n- #1119 Wrongs textlines and events\n- #1120 Health is black when viewing stats\n- #1129 Errors in bowing animations of the nurse\n- #1146 [Recomp] Map music glitch\n- #1149 issue that affects tranlations\n- #1175 Pikachu visible too late\n- #1189 Town Map Item\n- #1193 Status moves have (wrong) sound effects when battle animations are turned off\n- #1206 Gen1: Cinnebar island has unfishable tiles north and east\n- #1207 Poison Flicker Visual issue\n- #1214 Title Screen with OG Red is the wrong color\n- #1219 [GOLD] UNABLE TO USE SUN STONE\n- #1220 No screen shaking for hitting moves when battle animations are off\n- #1221 [Gold] Flaafy evolution to at Lvl 30 Ampharos skipped learn thunder punch\n- #1225 Jingles for learning moves missing\n\n## Contributors\n\n- @1Jamie\n- @bryanthaboi"
+        },
+        {
+          "version": "0.1.81",
+          "date": "2026-08-13",
+          "size": 9886854,
+          "downloadURL": "https://github.com/bryanthaboi/gen1recomp/releases/download/v0.1.81/gen1recomp++-0.1.81-ios.ipa",
+          "localizedDescription": "Download the correct version for your computer below.\n\n## Issues closed\n\n- #1091 Encounter Rate is tied to Game Speed\n- #1097 Phase through walls exiting a cave\n- #1100 Allow for control edit and vibration toggle on gold\n- #1104 wrong warp\n- #1135 update for iphone - haptic vibrations\n- #1155 Magnitude always rolls a 4\n- #1157 Sonic Boom doesn't deal set damage\n- #1158 Unable to view opponent's next Pokemon\n- #1159 Dig animation is bugged\n- #1160 64x64 battle sprite followup for mods\n- #1167 [Gold] items in ilex forest missing\n- #1208 Gold Save game not showing properly in LAUNCHER after having multiple saves\n\n## Contributors\n\n- @bryanthaboi\n- @castdrian\n- @MaxTomahawk\n- @Yukitty\n- Codex Agent"
+        },
+        {
+          "version": "0.1.80",
+          "date": "2026-08-12",
+          "size": 10964568,
+          "downloadURL": "https://github.com/bryanthaboi/gen1recomp/releases/download/v0.1.80/gen1recomp-0.1.80-ios.ipa",
+          "localizedDescription": "Download the correct version for your computer below.\n\n## Issues closed\n\n- #1100 Allow for control edit and vibration toggle on gold\n- #1107 [Gold] When playing without a save slot in the launcher, no save will be created at all when saving ingame\n- #1112 [Gold] In the shop when buying items and pressing \"down\", it should not default to x99\n- #1121 [Gold] NPC trading (probably player too?) animation broken / missing things\n- #1126 [Gold] Jumping off ledge animation missing\n- #1130 A separate program for Gen2 (Gen2 Recomp)\n- #1145 Gen1recomp internal update - Mod didn't filter for Gen1 and Gen2 when click on individual tab\n- #1150 Control in Gold freeze when change\n- #1151 [Gold] Following up of #1127\n- #1152 [Gold] You cannot try to run away from wild battle after one of your Pokemon gets fainted.\n- #1161 window/borderless & resolution selection for gen2\n- #1162 [gold] learning TM/HM doesn't show if possible or not\n- #1164 Goldenrod Tower Softlock\n- #1165 [Gold] NPC trading behavior and ledge jumping missing still there despite fix\n- #1166 [Gold] nickname screen grey\n- #1167 [Gold] items in ilex forest missing\n- #1168 [Gold] multi-hit attacks only hits twice\n- #1169 [Gold] the sales lady in goldenrod underground\n- #1172 [Gold] {last item u found/got} used ROCK SMASH\n- #1173 [Gold] ROCK SMASH rocks keep slide left\n- #1177 [Gold] Touch controls position\n- #1178 No Vibration Setting for Gold\n- #1180 [Gold] something feels off with the DV calculation\n- #1184 [Gold] Kurt is in the wrong spot, blocking you from progressing\n- #1185 [Gold] Text messages is in the wrong order when a Pokemon learns a new skill after a trainer fight\n- #1188 GoldenRod tower softlock\n- #1190 POKEMON GOLD GEN1RECOMP++\n- #1192 cant import gold on RGXX build\n\n## Contributors\n\n- @anxiousintrovert\n- @AverageConsumer\n- @bryanthaboi\n- @MaxTomahawk\n- @ShaneMcGovernIE\n- @thibautbus"
+        },
         {
           "version": "0.1.79",
           "date": "2026-08-12",

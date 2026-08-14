@@ -96,14 +96,14 @@ The launcher asks the same question of a mod's dependencies: one whose hard
 dependency does not run on the selected game reads `Needs <id> (not for Gold)`,
 matching the loader's contagious skip.
 
-A separate overlay, `options.modsByVersion[version][id]`, is where a per-game
-enable flag will live. It is a preview: `SaveData.PER_VERSION_MODS` is `false`,
-so `SaveData.modScope` answers nil for every caller and the launcher panel, the
-in-game manager and the loader all read *and* write the one shared
-`options.mods` flag. Nothing consults the overlay for enablement until that
-flips, which is deliberate: the overlay is plantable from an imported
-`.g1rmodlist`, and a reader scoped differently from the writers would show a
-mod set no boot would honour.
+A separate overlay, `options.modsByVersion[version][id]`, holds each game's
+enable flag. The launcher shows a coloured Red / Blue / Yellow / Gold checkbox
+for every installed mod, and the loader and in-game manager read the same
+game-specific answer on the next boot. On the first launch after this feature,
+the existing shared state is copied to every game, so a mod that was enabled
+remains enabled everywhere; after that, changing one checkbox affects only
+that game. New mods still default to enabled on every game (experimental mods
+retain their explicit opt-in default).
 
 That is deliberate. Gold reimplements the battle engine, the overworld, the
 script VM and the save format, so a Gen 1 mod dropped into a Gold boot would
@@ -118,10 +118,11 @@ Gen 2 games no longer loads on Red, Blue or Yellow. Say `["all"]` or list both
 generations if you want both.
 
 Two riders. **A hard dependency that does not run here takes the dependent down
-with it**, as a skip rather than a failure and carrying the dependency's own
-wording (`depends on X, which does not run here (For Blue, not Red)`), so the
-whole chain has to cover the same games. And **the claim is yours, not the last
-word**: it is the manager's `TRY HERE ANYWAY` row that lets a player run a mod
+with it** (unless scoped to specific games, e.g.
+`dependencies: [{ id = "x", games = ["gen2"] }]`), as a skip rather than a
+failure and carrying the dependency's own wording (`depends on X, which does not
+run here (For Blue, not Red)`), so the whole chain has to cover the same games.
+And **the claim is yours, not the last word**: it is the manager's `TRY HERE ANYWAY` row that lets a player run a mod
 whose author never opted in, which is the only route for a mod written before
 the field existed. The override is per game -- `options.modsGen2[id]` is a
 `{ [version] = true }` table, so forcing a mod onto Red does not force it onto
@@ -239,7 +240,7 @@ resolves to the weaker claim:
 | `warned` | present, answers nil or degrades, and names itself once with the mod attributed |
 | `absent` | deliberately not served; a nil read is the honest failure |
 
-Today that is 288 backed, 32 warned and 161 absent across the fifteen modules.
+Today that is 291 backed, 32 warned and 161 absent across the fifteen modules.
 `notes` keys are documentation topics rather than a member list -- dotted paths
 (`save.money`), field names (`warpAt`), hook names (`hook ui.pc.items`) and
 bare topics (`identity`, `iteration`, `rawset`) all appear there. `members` is
@@ -474,6 +475,8 @@ Generation-agnostic; nothing to adapt.
 (`src/world/gen2/WorldAPI.lua`). Two differences show through and are
 documented on the module: Gold's world is not a stack state, and Gen 2 event
 flags are numeric ids into `wEventFlags` rather than string keys.
+`mapOverview` returns the same read-only terrain, tile-shading, and marker
+shape, using Gold's live object masks and event flags to omit collected items.
 `spawnNpc` / `removeNpc` append onto the map def's own object list, the way the
 Gen 1 arm does, so a spawned actor is pooled, drawn, walked and talked to like
 an extracted one and survives a map reload; it is not serialized, so a mod
@@ -483,6 +486,9 @@ has its own entry points for (`start_battle "wild" species level`, `warp`,
 **by name, before the first row runs**, so a mod never gets a half-run queue.
 `marchInPlace` still has no Gen 2 equivalent (the Gen 2 movement stream has no
 byte for it) and returns `nil, reason` rather than approximating one.
+`availableFieldActions` and `useFieldAction` expose the same contextual
+bicycle and fishing records in both games. Each engine keeps ownership of its
+inventory, terrain, surfing, bike, and fishing rules.
 
 **Hooks and events that fire on Gold.** Every name below is the Gen 1 name
 carrying the Gen 1 payload keys, because Gold's call sites reuse them rather
@@ -531,8 +537,9 @@ gains a field instead of the name gaining a prefix.
   `pokemon.level_up`, `pokemon.move_learned`; hooks `battle.damage`,
   `battle.crit`, `battle.accuracy`, `battle.turn_order`,
   `battle.enemy_action`, `battle.run`, `battle.exp_award`, `exp.gain`,
-  `catch.rate`, `trainer.party`, `battle.overlay`, `battle.low_health_alarm`
-  and `battle.catch_exp`. One payload difference: Gen 1's vanilla
+  `catch.rate`, `trainer.party`, `battle.overlay`, `battle.low_health_alarm`,
+  `battle.catch_exp`, `battle.bottom_ui_visible` and
+  `battle.status_hud_visible`. One payload difference: Gen 1's vanilla
   `battle.low_health_alarm` link reads `ctx.battle.data`, and Gold's battle
   screen has no `.data` field, so the Gen 2 site **adds** `ctx.data` beside the
   Gen 1 keys. A mod that calls `nextFn` is unaffected; one that reaches through
@@ -544,11 +551,13 @@ gains a field instead of the name gaining a prefix.
   each row's decision in `evolution.check`. The hook passes `data` where Gen 1
   passes `game`; positions 2-4 (mon, row, trigger) match.
 - *The frame (`src/core/Game2.lua`):* hooks `input.step`, `input.pointer`,
-  `render.zones`, `render.compose`, `render.letterbox`, `render.hud`. Each sits
+  `render.zones`, `render.compose`, `render.output_enabled`, `render.output`,
+  `render.letterbox`, `render.hud`. Each sits
   at the same moment `src/core/Game.lua` and `src/render/Renderer.lua` raise it
   -- the logic tick before the pad is read, a pointer the touch overlay gets
   first refusal on, the palette zone list handed to the present pass, the
-  letterbox, and the finished playfield rect -- and carries the same payload.
+  composed frame before GBCFX, the letterbox, and the finished playfield rect
+  -- and carries the same payload.
   `render.hud`'s `gameX` / `gameY` really is where Gold's dialogue boxes and
   menus land, because `Chrome.fitScale` / `fitOrigin` and `World:fitScale`
   compute the same number. `render.zones` is handed `nil` in GBC mode (Gold
@@ -757,6 +766,11 @@ name and the existing payload, plus fields where Gen 2 genuinely carries more
 
 The list is much shorter than it was. What is outstanding, in descending value:
 
+- `trainer.before_battle`: Gold constructs and pushes its trainer battle in
+  `src/world/gen2/World.lua:startBattle`, which does not yet expose a deferred
+  preparation boundary or a battle-local player-party view. Gen 1 mods can use
+  the hook documented in `docs/modding.md`; do not claim Gold compatibility
+  when that selection is required.
 - `pokemon.before_give` / `pokemon.received`: Gold has no give-mon seam of its
   own yet.
 - `link.*` and `trade.completed`: a Gold boot offers no link menu at all. The

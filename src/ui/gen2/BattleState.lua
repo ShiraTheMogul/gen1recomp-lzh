@@ -106,6 +106,10 @@ local TEXT_ASK_FORGET_SLOT = Strings.source("Which move should\nbe forgotten?")
 local TEXT_CANT_FORGET_HM = Strings.source("HM moves can't be\nforgotten now.")
 local TEXT_STOP_LEARNING = Strings.source("Stop learning\n%s?")
 
+-- BattleText_EnemyIsAboutToUseWillPlayerChangeMon (data/text/battle.asm:222-231).
+local TEXT_ENEMY_ABOUT_TO_USE = Strings.source(
+  "%s\nis about to use\v%s.\fWill %s\nchange POKéMON?")
+
 -- _AskForgetMoveText, all three paragraphs (data/text/common_3.asm:141-165).
 local TEXT_ASK_FORGET_MOVE = Strings.source(
   "%s is\ntrying to learn\v%s.\fBut %s\ncan't learn more\vthan four moves."
@@ -168,6 +172,31 @@ end
 
 function BattleState:wantsFillScale() return true end
 function BattleState:drawsWidescreen() return true end
+
+function BattleState:bottomUIVisible()
+  if not Runtime.wantsHook("battle.bottom_ui_visible") then return true end
+  return Runtime.call("battle.bottom_ui_visible", function() return true end,
+                      self) ~= false
+end
+
+function BattleState:statusHUDVisible()
+  if not Runtime.wantsHook("battle.status_hud_visible") then return true end
+  return Runtime.call("battle.status_hud_visible", function() return true end,
+                      self) ~= false
+end
+
+-- Class frontpic for the battle intro.  A trainers-registry `pic` wins over
+-- the extracted menu_gfx sheet; `trueColor` skips the GBC 4-shade remap.
+-- Returns path, trueColor.
+function BattleState.trainerArt(data, classId)
+  if not classId then return nil, false end
+  local classes = data and data.gen2Trainers and data.gen2Trainers.classes
+  local classDef = classes and classes[classId]
+  local hud = data and data.gen2MenuGfx and data.gen2MenuGfx.battleHud
+  local path = (classDef and classDef.pic)
+    or (hud and hud.trainerPics and hud.trainerPics[classId])
+  return path, (classDef and classDef.trueColor) and true or false
+end
 
 -- opts: battle (a Battle), onDone(outcome), save
 function BattleState.new(game, opts)
@@ -292,6 +321,7 @@ function BattleState.new(game, opts)
   -- pic is a cache asset, so an import made before the extractor grew that
   -- stage has none and the mon stands in for the whole intro.
   self.showEnemyTrainer = false
+  self.enemyTrainerTrueColor = false
   -- The CLASS CONSTANT (BUG_CATCHER), which is what both tables this looks the
   -- pic up in are keyed by: menu_gfx's trainerPics is written out of
   -- constants.trainerClassOrder, and palettes.trainers out of the same names.
@@ -301,17 +331,19 @@ function BattleState.new(game, opts)
   -- no palette for every trainer the world starts, which is all of them.
   -- `classId` is the trainers.lua key, i.e. the constant; `className` is the
   -- DISPLAY name ("BUG CATCHER", with the space) and is not a key at all.
+  -- A class record's own `pic` / `trueColor` (the trainers registry) wins
+  -- over the extracted sheet, so a mod can drop in full-color art.
   local enemyTrainer = self.battle and self.battle.trainer
   self.enemyTrainerClass = enemyTrainer
     and (enemyTrainer.classId or enemyTrainer.class)
-  local trainerPics = hudGfx and hudGfx.trainerPics
-  local trainerPath = self.enemyTrainerClass and trainerPics
-    and trainerPics[self.enemyTrainerClass]
+  local trainerPath, trainerTrueColor =
+    BattleState.trainerArt(data, self.enemyTrainerClass)
   if trainerPath then
     local ok, image = pcall(Assets.image, trainerPath)
     if ok and image then
       self.enemyTrainerImage = image
       self.enemyTrainerPath = trainerPath
+      self.enemyTrainerTrueColor = trainerTrueColor and true or false
       self.showEnemyTrainer = true
     end
   end
@@ -548,6 +580,14 @@ BattleState.PLAYER_PIC_TILES = 6
 -- box's own bottom centre.
 local PIC_RESIZE_TILES = { [0] = 6, [1] = 4, [2] = 2, [3] = 7, [4] = 5, [5] = 3 }
 
+-- SUBSTATUS_UNDERGROUND / SUBSTATUS_FLYING, which BattleCommand_Charge sets on
+-- FLY and DIG only (engine/battle/effect_commands.asm:5478-5485); the port
+-- carries both as the volatile `vanished` flag.
+function BattleState.isVanished(mon)
+  local volatiles = mon and mon.volatile
+  return (volatiles and volatiles.vanished) and true or false
+end
+
 function BattleState:drawPic(mon, back)
   -- During the intro slide the player-side pic belongs to presentSlide's
   -- backpic overlay, not to the baked bands (see BattleAnimView).
@@ -564,13 +604,23 @@ function BattleState:drawPic(mon, back)
   -- slides it out (InitEnemyTrainer, engine/battle/core.asm:7848).
   local enemyTrainer = (not back) and self.showEnemyTrainer
     and self.enemyTrainerImage
-  if enemyTrainer then image, path = enemyTrainer, self.enemyTrainerPath end
+  if enemyTrainer then
+    image, path = enemyTrainer, self.enemyTrainerPath
+    trueColor = self.enemyTrainerTrueColor
+  end
   if not image then return end
   local side = back and "player" or "enemy"
   local anim = self:animPicState(side)
   -- The box is empty either because the animation running right now has
   -- cleared it, or because the last one ENDED with it cleared (picHidden).
   if (anim and anim.hidden) or self.picHidden[side] then return end
+  -- Mid FLY / DIG the box is empty: DisappearUser ClearBoxes it
+  -- (engine/battle/misc.asm:1-13), AppearUserRaiseSub puts it back on the
+  -- stored attack (engine/battle/effect_commands.asm:2113-2117).
+  if not (trainerBack or enemyTrainer) and BattleState.isVanished(mon)
+     and not (self.vanishAnim and self.vanishAnim == self.anim) then
+    return
+  end
   local G = love.graphics
   local w, h = image:getDimensions()
   local px, py
@@ -582,10 +632,12 @@ function BattleState:drawPic(mon, back)
     py = BattleState.PLAYER_PIC_TILE_Y * 8 + (box - h)
     boxTiles = BattleState.PLAYER_PIC_TILES
   else
-    -- Bottom-aligned and horizontally centred inside the 7x7 box.
+    -- PadFrontpic pads a short pic and never a long one
+    -- (engine/gfx/load_pics.asm:342-386), so an oversized mod pic pins to the
+    -- box's own corner at hlcoord 12, 0 rather than to a negative offset.
     local box = BattleState.ENEMY_PIC_TILES * 8
-    px = BattleState.ENEMY_PIC_TILE_X * 8 + math.floor((box - w) / 2)
-    py = BattleState.ENEMY_PIC_TILE_Y * 8 + (box - h)
+    px = BattleState.ENEMY_PIC_TILE_X * 8 + math.max(0, math.floor((box - w) / 2))
+    py = BattleState.ENEMY_PIC_TILE_Y * 8 + math.max(0, box - h)
     boxTiles = BattleState.ENEMY_PIC_TILES
   end
   -- One tile per two frames to the right, SlideBattlePicOut's own step.
@@ -903,11 +955,12 @@ function BattleState:startAnim(key, opts)
     param = opts.param or 0,
     sfxOrder = audio.sfxOrder,
     ballPalette = opts.ballPalette,
+    -- BGEffect_CheckFlyDigStatus reads wPlayerSubStatus3 / wEnemySubStatus3
+    -- (engine/battle_anims/bg_effects.asm:2838-2851); the port keeps that bit
+    -- on the mon's volatile table, not on the mon itself.
     flying = {
-      player = self.battle and self.battle.player
-        and self.battle.player.vanished or false,
-      enemy = self.battle and self.battle.enemy
-        and self.battle.enemy.vanished or false,
+      player = BattleState.isVanished(self.battle and self.battle.player),
+      enemy = BattleState.isVanished(self.battle and self.battle.enemy),
     },
     hooks = {
       -- anim_sound (engine/battle_anims/anim_commands.asm:1105) calls
@@ -1364,6 +1417,13 @@ function BattleState:advanceQueue()
           self.afterAnimPlayed = true
         end
       end
+    end
+    -- BattleCommand_Charge runs LoadMoveAnim BEFORE DisappearUser
+    -- (engine/battle/effect_commands.asm:5459-5470), so FLY / DIG still draw
+    -- the take-off or the burrow on the turn the substatus goes up; the box
+    -- only empties once THIS animation is done with.
+    if BattleState.isVanished(self:activeMon(event.side)) then
+      self.vanishAnim = self.anim
     end
   elseif event.kind == "damage" and event.side then
     -- ANIM_x_DAMAGE is the MOVE's after-anim (effect_commands.asm:1963-1972),
@@ -1861,6 +1921,20 @@ function BattleState:update(_dt)
     elseif input:wasPressed("a") then
       return self:answerNickname(self.nicknameIndex == 1)
     end
+    return
+  end
+
+  -- The prompt's earlier pages: PlaceYesNoBox only follows the LAST one
+  -- (engine/battle/core.asm:3302-3305), so the mon is named and read first.
+  if self.phase == "shift-intro" then
+    if self.messageTimer > 0 then
+      if input:wasPressed("a") or input:wasPressed("b") then
+        self.messageTimer = 0
+      end
+      return
+    end
+    self:nextPage()
+    if not self.messagePages then self.phase = "ask-shift" end
     return
   end
 
@@ -2464,13 +2538,13 @@ end
 -- (engine/battle/core.asm:3298-3304, data/text/battle.asm:222-231).
 function BattleState:offerShiftSwitch(mon)
   self.shiftIndex = 1
-  self.phase = "ask-shift"
   local trainer = (self.battle.trainer and self.battle.trainer.name) or "Foe"
   local player = (self.save and self.save.player and self.save.player.name)
     or "GOLD"
-  self.message = trainer .. " is about to use " .. self:name(mon)
-    .. ". Will " .. player .. " change POKéMON?"
-  self.messageTimer = MESSAGE_FRAMES
+  -- The `para` splits this in two (data/text/battle.asm:222-231): the incoming
+  -- mon is NAMED on its own page, and only the second carries the yes/no box.
+  self:showPages(Strings(TEXT_ENEMY_ABOUT_TO_USE, trainer, self:name(mon), player))
+  self.phase = self.messagePages and "shift-intro" or "ask-shift"
 end
 
 function BattleState:answerUseNextMon(yes)
@@ -3036,6 +3110,7 @@ end
 function BattleState:drawHud()
   local wasBattle = Font.useBattleExtra(true)
   local enemy, player = self:activeMon("enemy"), self:activeMon("player")
+  local showStatus = self:statusHUDVisible()
 
   -- Enemy HUD (DrawEnemyHUD clears (1,0) 4 rows x 11 cols):
   --   name at (1,0); PrintLevel at (6,1) with the gender symbol at (9,1);
@@ -3044,7 +3119,7 @@ function BattleState:drawHud()
   -- runs, so a shake or a slide does not drag the HP bar with it.
   -- And nothing at all before UpdateEnemyHUD has ever run: the intro bands
   -- slide in over a blanked tilemap (core.asm:8554/8564).
-  if self.showEnemyHud and not self:hudCleared("enemy") then
+  if showStatus and self.showEnemyHud and not self:hudCleared("enemy") then
   Chrome.print(self:name(enemy), 1, 0)
   -- PrintLevel writes <LV> at the coordinate it is given and then LEFT-aligns
   -- the digits after it, so the glyph is pinned to column 6 whether the level
@@ -3084,7 +3159,8 @@ function BattleState:drawHud()
   -- BattleMenu's own tutorial arm skips UpdateBattleHuds as well.  The DUDE's
   -- half of the screen is his back-pic and nothing more.
   -- Nor before SendOutPlayerMon's own UpdatePlayerHUD (core.asm:3838).
-  if not player or not self.showPlayerHud or self:hudCleared("player") then
+  if not showStatus or not player or not self.showPlayerHud
+      or self:hudCleared("player") then
     Font.useBattleExtra(wasBattle)
     return
   end
@@ -3182,6 +3258,11 @@ function BattleState:drawPanel()
     return
   end
   self:drawHud()
+
+  if not self:bottomUIVisible() then
+    love.graphics.setColor(1, 1, 1, 1)
+    return
+  end
 
   -- Message box across the bottom, with the menu window over its right half --
   -- the cart draws the prompt into the full-width box and then opens the menu

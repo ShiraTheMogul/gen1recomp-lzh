@@ -891,8 +891,7 @@ do
     check(tb:lockedAction(tb.enemy) == nil, "victim is free after the release")
   end
 
-  -- #2: recoil and drain use the RAW computed damage, not the HP-capped
-  -- amount dealt
+  -- engine/battle/core.asm ApplyDamageToEnemyPokemon
   do
     Game.save.party = { Pokemon.new(Data, "BULBASAUR", 20) }
     local rb = BattleState.newWild(Game, "RATTATA", 3)
@@ -903,8 +902,8 @@ do
     rb.rng = mkseq({ 0, 255, 255 })
     local hpBefore = rb.player.mon.hp
     rb:performMove(rb.player, rb.enemy, { id = "TAKE_DOWN", pp = 10 })
-    eq(hpBefore - rb.player.mon.hp, math.floor(raw / 4),
-       "recoil is raw damage / 4 even when only 1 HP was dealt")
+    eq(hpBefore - rb.player.mon.hp, 1,
+       "recoil is capped damage / 4 with a minimum of 1")
 
     local db = BattleState.newWild(Game, "RATTATA", 3)
     db.enemy.mon.hp = 1
@@ -914,9 +913,9 @@ do
     check(rawD >= 4, "raw MEGA DRAIN damage is meaningful (" .. rawD .. ")")
     db.rng = mkseq({ 0, 255, 255 })
     db:performMove(db.player, db.enemy, { id = "MEGA_DRAIN", pp = 10 })
-    eq(db.player.mon.hp - 1, math.floor(rawD / 2),
-       "drain heals raw damage / 2 even when only 1 HP was dealt")
-    eq(db.lastDamage, math.floor(rawD / 2),
+    eq(db.player.mon.hp - 1, 1,
+       "drain heals capped damage / 2 with a minimum of 1")
+    eq(db.lastDamage, 1,
        "drain halves wDamage in place (Counter would see the half)")
   end
 
@@ -2563,8 +2562,8 @@ do
   end
   eq(fanfares, 1, "one caught fanfare per capture")
   eq(tinks, 3, "three wobble tinks on a $43 capture")
-  check(fanfareAt and caughtAt and fanfareAt < caughtAt,
-        "Caught_Mon sounds with the caught text, not after its dismissal")
+  check(fanfareAt and caughtAt and caughtAt < fanfareAt,
+        "Caught_Mon sounds once the caught text is out, before its prompt")
   eq(cb4.result, "caught", "the capture resolved the battle")
   -- the nickname AskName that follows clears it (ClearSprites), so the
   -- assertion is sampled while the caught text is up
@@ -2788,15 +2787,23 @@ do
   press("down")
   eq(om.index, 25, "cursor reaches CONTROLS")
   press("down")
-  eq(om.index, 26, "CANCEL stays the fixed final row")
-  eq(om.scroll, 21, "CANCEL keeps the last option boxes on screen")
+  eq(om.index, 26, "cursor reaches DATE FORMAT")
+  press("down")
+  eq(om.index, 27, "cursor reaches TIME FORMAT")
+  press("down")
+  -- CANCEL is appended after the descriptor list rather than living in it, so
+  -- it lands one past #rows and the window holds the last six boxes.  Counted
+  -- off #rows so the next row added here is not read as a wrap bug.
+  local cancelRow = #om.rows + 1
+  eq(om.index, cancelRow, "CANCEL stays the fixed final row")
+  eq(om.scroll, cancelRow - 5, "CANCEL keeps the last option boxes on screen")
   om:draw() -- smoke: scrolled layout draws under the headless stub
   press("a")
   check(popped, "A on CANCEL closes the options menu")
   local om2 = OptionsMenu.new(og)
   OInput.pressed = { up = true }; om2:update(1 / 60); OInput.pressed = {}
-  eq(om2.index, 26, "up from the top wraps to CANCEL")
-  eq(om2.scroll, 21, "wrapping to CANCEL scrolls to the tail")
+  eq(om2.index, cancelRow, "up from the top wraps to CANCEL")
+  eq(om2.scroll, cancelRow - 5, "wrapping to CANCEL scrolls to the tail")
   -- headless-safe: no love.audio, setters only update internal state
   require("src.core.Music").applyOptions(og.save.options)
   require("src.core.Sound").applyOptions(og.save.options)

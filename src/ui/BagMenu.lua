@@ -33,12 +33,12 @@ local function save_name(game)
   return game.save.player.name
 end
 
-local function showMessages(game, msgs, onDone)
+local function showMessages(game, msgs, onDone, opts)
   if not msgs or #msgs == 0 then
     if onDone then onDone() end
     return
   end
-  game.stack:push(TextBox.new(game, table.concat(msgs, "\f"), onDone))
+  game.stack:push(TextBox.new(game, table.concat(msgs, "\f"), onDone, opts))
 end
 
 -- run the use-flow for an item on a chosen target.  `picker` is the party
@@ -57,6 +57,14 @@ local function useOn(game, battle, id, target, list, moveIndex, picker)
   if result == "flute_field" then
     require("src.core.Sound").play(game.data, "Pokeflute")
     showMessages(game, payload)
+    return
+  end
+
+  if result == "flute_wake_pikachu" then
+    require("src.core.Sound").play(game.data, "Pokeflute")
+    showMessages(game, payload, function()
+      game.overworld.pikachuPewterSleepScene = nil
+    end)
     return
   end
 
@@ -142,12 +150,9 @@ local function useOn(game, battle, id, target, list, moveIndex, picker)
     list:close()
     local ow = game.overworld
     local p = ow and ow.player
-    if ow and p then
-      local fx, fy = p:facingCell()
-      if ow.map:inBounds(fx, fy) and ow.map:isWaterCell(fx, fy) then
-        ow:goFishing(id)
-        return
-      end
+    if ow and p and ow:facingIsShoreOrWater() then
+      ow:goFishing(id)
+      return
     end
     showMessages(game, { Strings("No good! It's not\neven near water.") })
     return
@@ -176,19 +181,27 @@ local function useOn(game, battle, id, target, list, moveIndex, picker)
       end
       if #target.moves < 4 then
         table.insert(target.moves, { id = moveId, pp = mdef.pp })
+        -- LearnedMove1Text: text_far, sound_get_item_1, text_promptbutton
+        -- (learn_move.asm), so the jingle rides the box
         showMessages(game, { Strings("%s learned\n%s!", target.nickname or
-          game.data.pokemon[target.species].name, mdef.name) })
+          game.data.pokemon[target.species].name, mdef.name) }, nil,
+          TextBox.soundOpts(game, "Get_Item1"))
         if result == "learn" then consume(game, id) end
+        list.items = buildItems(game)
+        list.index = math.min(list.index, math.max(1, #list.items))
         taught()
       else
         require("src.ui.Screens").push(game, "MoveLearnMenu", target, moveId,
           function(learned)
             if learned and result == "learn" then consume(game, id) end
+            if learned then
+              list.items = buildItems(game)
+              list.index = math.min(list.index, math.max(1, #list.items))
+            end
             if learned then taught() end
           end)
       end
     end
-    list:close()
     teach()
     return
   end
@@ -324,7 +337,7 @@ local function useOn(game, battle, id, target, list, moveIndex, picker)
               table.insert(target.moves, { id = moveId, pp = mdef.pp })
               local name = target.nickname or def.name
               showMessages(game, { Strings("%s learned\n%s!", name, mdef.name) },
-                           nextStep)
+                           nextStep, TextBox.soundOpts(game, "Get_Item1"))
             else
               require("src.ui.Screens").push(game, "MoveLearnMenu",
                                              target, moveId, nextStep)
@@ -370,6 +383,7 @@ local function pickTargetAndUse(game, battle, id, list)
   local def = game.data.items[id]
   local opts = {
     pickOnly = true,
+    battle = battle,
     -- HP medicine animates its bar with the picker still up (#252).  Only
     -- out of battle: the in-battle tail closes the bag list underneath
     -- first, which needs the picker already gone.

@@ -526,6 +526,22 @@ function Commands.set_field(ctx, key, value)
   ctx.save[key] = value
 end
 
+function Commands.load_player_starter_name(ctx)
+  local flags = ctx.save.flags or {}
+  local species = flags.EVENT_CHOSE_PIKACHU and "PIKACHU"
+    or flags.EVENT_CHOSE_CHARMANDER and "CHARMANDER"
+    or flags.EVENT_CHOSE_SQUIRTLE and "SQUIRTLE"
+    or flags.EVENT_CHOSE_BULBASAUR and "BULBASAUR"
+    or (ctx.save.party and ctx.save.party[1] and ctx.save.party[1].species)
+  local def = species and ctx.game.data.pokemon[species]
+  ctx.game.stringBuffer = def and def.name or species or ""
+end
+
+function Commands.spawn_pikachu_follower(ctx)
+  require("src.world.PikachuFollower").onMapEntered(
+    ctx.game, ctx.overworld, nil, false)
+end
+
 local function toggleObject(ctx, mapId, objName, visible)
   local save = ctx.save
   save.objectToggles = save.objectToggles or {}
@@ -574,6 +590,17 @@ end
 
 function Commands.play_sound(ctx, soundId)
   require("src.core.Sound").play(ctx.game.data, soundId)
+end
+
+-- text_sound <soundId>: the jingle the ROM parks at the END of a string as
+-- a trailing text command (sound_get_item_1, sound_get_key_item ->
+-- home/text.asm TextCommand_SOUND).  It arms the NEXT show_text the same
+-- way play_cry arms ctx.pendingCry, so the fanfare fires once the last page
+-- has typed and the box holds on WaitForSoundToFinish before the button
+-- wait.  play_sound stays the bare PlaySound used for the non-blocking
+-- beats (Bill's teleporter, the S.S. Anne horn).
+function Commands.text_sound(ctx, soundId)
+  ctx.textOpts = TextBox.soundOpts(ctx.game, soundId, ctx.textOpts)
 end
 
 -- play_once <songId>: one-shot jingle (Music_PkmnHealed, etc.); blocks
@@ -1035,7 +1062,7 @@ function Commands.trade(ctx, tradeIndex, doneFlag)
   })
   runner:yield()
   
-    -- In-game trades can trigger trade evolutions, just like link trades.
+  -- In-game trades can trigger trade evolutions, just like link trades.
   -- This restores the original engine's EvolveTradeMon hook.
   -- The edit is necessary to ensure trade evolutions are obtainable in the ROM naturally.
   local Evolution = require("src.pokemon.Evolution")
@@ -1052,8 +1079,10 @@ function Commands.trade(ctx, tradeIndex, doneFlag)
     runner:yield()
   end
   
-  -- TradedForText (sound_get_key_item) then the dialogset's thanks
-  require("src.core.Sound").play(data, "Get_Key_Item")
+  -- TradedForText carries sound_get_key_item after the text, so the jingle
+  -- rides the box and blocks it (home/text.asm TextCommand_SOUND), then the
+  -- dialogset's thanks
+  Commands.text_sound(ctx, "Get_Key_Item")
   say(texts.tradedFor or "_TradedForText")
   say(texts.thanks or "_Thanks" .. dialogset .. "Text")
 end
@@ -1149,9 +1178,7 @@ end
 -- opts.tempo is the Music_*AlternateTempo override (audio/alternate_tempo.asm
 -- re-points channel 1 at a stub that only changes the song's `tempo`) (#847).
 function Commands.play_music(ctx, songId, opts)
-  local tempo = opts and opts.tempo
-  require("src.core.Music").play(ctx.game.data, songId, nil,
-                                 tempo and { tempo = tempo } or nil)
+  require("src.core.Music").play(ctx.game.data, songId, nil, opts)
   if opts and opts.keep and ctx.overworld then
     ctx.overworld.keepMusicOnce = true
   end

@@ -8,9 +8,9 @@ local M = {}
 
 local function text(game) return game.data.text end
 
-local function push(game, s, done)
+local function push(game, s, done, opts)
   local TextBox = require("src.render.TextBox")
-  game.stack:push(TextBox.new(game, s, done))
+  game.stack:push(TextBox.new(game, s, done, opts))
 end
 
 -- The question stays on screen under the YES/NO menu.  The dojo prize
@@ -142,7 +142,7 @@ M.MT_MOON_POKECENTER = {
         local Commands = require("src.script.Commands")
         Commands.give_pokemon({ save = game.save, game = game, overworld = ow },
                               "MAGIKARP", 5)
-        push(game, ("%s got a\nMAGIKARP!"):format(game.save.player.name), done)
+        push(game, t._GotMonText or "{PLAYER} got\n{RAM:wNameBuffer}!", done)
       end)
     end,
   },
@@ -263,7 +263,7 @@ M.SILPH_CO_7F = {
       { "jump_if_false", "box_full" },
       -- flag ahead of the jingle, like the Celadon EEVEE (#426)
       { "set_flag", "EVENT_GOT_LAPRAS" },
-      { "play_sound", "Get_Item1" },
+      { "text_sound", "Get_Item1" },
       { "show_text", "_GotMonText", { RAM = "LAPRAS" } },
       { "show_text", "_SilphCo7FSilphWorkerM1LaprasDescriptionText" },
       { "jump", "end" },
@@ -307,12 +307,11 @@ M.COPYCATS_HOUSE_2F = {
             return
           end
           game.stringBuffer = game.data.items.TM_MIMIC.name
-          require("src.core.Sound").play(game.data, "Get_Item1")
           Bag.remove(game.save, "POKE_DOLL", 1)
           game.save.flags.EVENT_GOT_TM31 = true
           push(game, t._CopycatsHouse2FCopycatReceivedTM31Text, function()
             push(game, t._CopycatsHouse2FCopycatTM31Explanation1Text, done)
-          end)
+          end, require("src.render.TextBox").soundOpts(game, "Get_Item1"))
         end)
       end)
     end,
@@ -478,7 +477,6 @@ M.CELADON_MART_ROOF = {
                     return
                   end
                   game.save.flags[g.flag] = true
-                  require("src.core.Sound").play(game.data, "Get_Item1")
                   local subs = { player = game.save.player.name,
                                  ram = game.data.items[g.tm].name }
                   local explain = fill(t[g.explain] or "", subs)
@@ -490,7 +488,7 @@ M.CELADON_MART_ROOF = {
                     else
                       done()
                     end
-                  end)
+                  end, require("src.render.TextBox").soundOpts(game, "Get_Item1"))
                 end)
               end,
               onCancel = done,
@@ -512,25 +510,28 @@ M.ROUTE_24 = {
       local flags = game.save.flags
       local function battleOrDone()
         if ow:trainerDefeated(npc) then
-          push(game, "I hate this!\nMy dreams of\nTEAM ROCKET...", done)
+          push(game, text(game)._Route24CooltrainerM1YouCouldBecomeATopLeaderText,
+            done)
         else
           ow:engageTrainer(npc, done)
         end
       end
       if not flags.EVENT_GOT_NUGGET then
-        push(game, "Congratulations!\nYou beat our 5\ncontest trainers!\f"
-          .. "You just earned a\nfabulous prize!", function()
+        local t = text(game)
+        push(game, t._Route24CooltrainerM1YouBeatOurContestText .. "\f"
+          .. t._Route24CooltrainerM1YouJustEarnedAPrizeText, function()
+          if not require("src.inventory.Bag").add(game.save, "NUGGET", 1,
+              game.data) then
+            push(game, t._Route24CooltrainerM1NoRoomText, done)
+            return
+          end
           flags.EVENT_GOT_NUGGET = true
-          require("src.inventory.Bag").add(game.save, "NUGGET", 1)
-          push(game, ("%s received\na NUGGET!"):format(game.save.player.name),
-            function()
-              ask(game, "By the way, would\nyou like to join\nTEAM ROCKET?",
-                function()
-                  push(game, "Arrgh! You are\nnot convinced?\fThen I'll show\n"
-                    .. "you my power!", battleOrDone)
-                end)
-            end)
-        end)
+          game.stringBuffer = game.data.items.NUGGET.name
+          push(game, t._Route24CooltrainerM1ReceivedNuggetText, function()
+            push(game, t._Route24CooltrainerM1JoinTeamRocketText,
+              battleOrDone)
+          end, require("src.render.TextBox").soundOpts(game, "Get_Item1"))
+        end, require("src.render.TextBox").soundOpts(game, "Get_Item1"))
         return
       end
       battleOrDone()

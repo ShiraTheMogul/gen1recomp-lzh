@@ -370,6 +370,32 @@ check(math.abs(r - 0.4) < 1e-6 and math.abs(g - 0.7) < 1e-6
       and math.abs(b - 0.9) < 1e-6,
       "a trueColor pic keeps a pixel no 4-shade palette contains")
 
+-- trainers.trueColor is the same opt-out on a class portrait
+BattleState.invalidate()
+local trainerPicData = {
+  trainers = {
+    SHADED = { pic = "assets/generated/battle/front/shaded.png" },
+    FULLCOLOR = { pic = "assets/generated/battle/front/full.png",
+                  trueColor = true },
+    REUSED = { basePic = "FULLCOLOR" },
+  },
+  palettes = { palettes = { MEWMON = monPalette }, pokemon = {} },
+}
+local shadedTrainer = BattleState.trainerSprite(trainerPicData,
+  trainerPicData.trainers.SHADED)
+r, g, b = shadedTrainer.data:getPixel(0, 0)
+check(r == 0 and g == 0 and b == 1,
+      "a 4-shade trainer pic is palette-quantized onto its shade bucket")
+local fullTrainer = BattleState.trainerSprite(trainerPicData,
+  trainerPicData.trainers.FULLCOLOR)
+r, g, b = fullTrainer.data:getPixel(0, 0)
+check(math.abs(r - 0.4) < 1e-6 and math.abs(g - 0.7) < 1e-6
+      and math.abs(b - 0.9) < 1e-6,
+      "a trueColor trainer pic keeps a pixel no 4-shade palette contains")
+check(BattleState.trainerTrueColor(trainerPicData,
+        trainerPicData.trainers.REUSED) == true,
+      "a basePic reuse inherits the base portrait's trueColor flag")
+
 -- ------- trueColor: the colors == false zone sentinel
 
 check(PaletteFX.zone(nil, 0, 0, 1, 1) == nil, "nil colors is still no zone")
@@ -986,6 +1012,33 @@ local fallback = BattleTransition.new({ stack = stack }, nil, {})
 check(fallback.style == "doublecircle",
       "a hook naming an unregistered style falls back to the vanilla bits")
 Runtime.install(Events.new(), Hooks.new(), {})
+
+-- ------- gated final-output ownership
+
+local outputHooks = Hooks.new()
+Runtime.install(Events.new(), outputHooks, {})
+local outputCalls, outputContext = 0, nil
+outputHooks:wrap("render.output", function(nextLink, context)
+  outputCalls, outputContext = outputCalls + 1, context
+  return true
+end, 0, "test")
+outputHooks:wrap("render.output_enabled", function() return false end, 0, "test")
+Renderer:init()
+Renderer.presentCanvas = nil
+Renderer:beginFrame(false)
+Renderer:endFrame(nil, nil)
+check(outputCalls == 0 and Renderer.presentCanvas == nil,
+      "a disabled output hook leaves the direct render path untouched")
+
+outputHooks:wrap("render.output_enabled", function() return true end, 10, "test")
+Renderer:init()
+Renderer.presentCanvas = nil
+Renderer:beginFrame(false)
+Renderer:endFrame(nil, nil)
+check(outputCalls == 1 and outputContext and outputContext.canvas,
+      "an enabled output hook receives the finished frame")
+check(outputContext and outputContext.generation == 1,
+      "the output context identifies the active generation")
 
 -- ------- asset transforms
 

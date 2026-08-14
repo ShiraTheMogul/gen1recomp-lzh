@@ -38,8 +38,8 @@ return {
       { "jump_if_false", "raise_young" },
       -- .DeliverParcelText: parcel handover, then the Pokédex scene
       -- (OaksLabRivalArrivesAtOaksRequestScript -> OakGivesPokedexScript)
+      { "text_sound", "Get_Key_Item" },
       { "show_text", "_OaksLabOak1DeliverParcelText" },
-      { "play_sound", "Get_Key_Item" },
       { "show_text", "_OaksLabOak1ParcelThanksText" },
       { "take_item", "OAKS_PARCEL", 1 },
       { "stop_music" },
@@ -62,8 +62,8 @@ return {
       { "face_object", RIVAL, "up" },
       { "face_object", OAK1, "down" },
       { "show_text", "_OaksLabOakMyInventionPokedexText" },
+      { "text_sound", "Get_Key_Item" },
       { "show_text", "_OaksLabOakGotPokedexText" },
-      { "play_sound", "Get_Key_Item" },
       { "hide_object", "OAKS_LAB", "OAKSLAB_POKEDEX1" },
       { "hide_object", "OAKS_LAB", "OAKSLAB_POKEDEX2" },
       { "face_object", RIVAL, "up" },
@@ -113,8 +113,8 @@ return {
       { "jump_if_true", "come_see" },
       { "set_flag", "EVENT_GOT_POKEBALLS_FROM_OAK" },
       { "give_item", "POKE_BALL", 5, false },
+      { "text_sound", "Get_Key_Item" },
       { "show_text", "_OaksLabOak1ReceivedPokeballsText" },
-      { "play_sound", "Get_Key_Item" },
       { "show_text", "_OaksLabGivePokeballsExplanationText" },
       { "jump", "end" },
 
@@ -176,7 +176,7 @@ return {
       -- rival starter baseline (RIVAL_STARTER_JOLTEON) at snatch time
       rows[#rows + 1] = { "set_field", "rivalStarter", 1 }
       rows[#rows + 1] = { "show_text", "_OaksLabRivalTakesText1" }
-      rows[#rows + 1] = { "play_sound", "Get_Key_Item" }
+      rows[#rows + 1] = { "text_sound", "Get_Key_Item" }
       rows[#rows + 1] = { "show_text", "_OaksLabRivalTakesText2" }
       rows[#rows + 1] = { "show_text", "_OaksLabRivalTakesText3" }
       rows[#rows + 1] = { "show_text", "_OaksLabRivalTakesText4" }
@@ -196,7 +196,7 @@ return {
       rows[#rows + 1] = { "face_object", OAK1, "down" }
       -- OaksLabPlayerReceivedMonText clears wMonDataLocation, so AskName runs (#1013)
       rows[#rows + 1] = { "show_text", "_OaksLabOakGivesText" }
-      rows[#rows + 1] = { "play_sound", "Get_Key_Item" }
+      rows[#rows + 1] = { "text_sound", "Get_Key_Item" }
       rows[#rows + 1] = { "show_text", "_OaksLabReceivedText", { RAM = "PIKACHU" } }
       rows[#rows + 1] = { "give_pokemon", "PIKACHU", 5 }
       -- DisablePikachuOverworldSpriteDrawing keeps it in the ball (#1009)
@@ -226,9 +226,15 @@ return {
   },
 
   onEnter = function(game, ow)
-    if not (game.save.flags and game.save.flags.EVENT_GOT_POKEDEX) then
-      return
+    local flags = game.save.flags or {}
+    if flags.EVENT_GOT_STARTER and not flags.EVENT_BATTLED_RIVAL_IN_OAKS_LAB then
+      local rival = ow:npcByIndex(RIVAL)
+      if rival then
+        rival.cellX, rival.cellY = 7, 4
+        rival.px, rival.py = 7 * 16, 4 * 16
+      end
     end
+    if not flags.EVENT_GOT_POKEDEX then return end
     local Commands = require("src.script.Commands")
     local ctx = { save = game.save, game = game, overworld = ow }
     Commands.hide_object(ctx, "OAKS_LAB", "OAKSLAB_POKEDEX1")
@@ -296,13 +302,14 @@ return {
       table.insert(rows, { "wait", 20 })
       table.insert(rows, { "show_text", "_OaksLabRivalSmellYouLaterText" })
       table.insert(rows, { "stop_music" })
-      table.insert(rows, { "play_music", "Music_MeetRival" })
+      table.insert(rows, { "play_music", "Music_MeetRival", { start = "rival" } })
       table.insert(rows, { "move_npc_to", RIVAL, 4, 11 })
       table.insert(rows, { "hide_object", "OAKS_LAB", "OAKSLAB_RIVAL" })
       table.insert(rows, { "play_music", "Music_OaksLab" })
       -- OaksLabPikachuEscapesPokeballScript: the follower reaches the map (#1009)
       table.insert(rows, { "face_player_dir", "up" })
       table.insert(rows, { "set_field", "pikachuInBall", false })
+      table.insert(rows, { "spawn_pikachu_follower" })
       table.insert(rows, { "play_cry", "PIKACHU" })
       table.insert(rows, { "show_text", "_OaksLabPikachuDislikesPokeballsText1" })
       table.insert(rows, { "show_text", "_OaksLabPikachuDislikesPokeballsText2" })
