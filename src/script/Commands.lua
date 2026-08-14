@@ -1034,6 +1034,24 @@ function Commands.trade(ctx, tradeIndex, doneFlag)
     onDone = function() runner:resume() end,
   })
   runner:yield()
+  
+    -- In-game trades can trigger trade evolutions, just like link trades.
+  -- This restores the original engine's EvolveTradeMon hook.
+  -- The edit is necessary to ensure trade evolutions are obtainable in the ROM naturally.
+  local Evolution = require("src.pokemon.Evolution")
+  local evoTo, evo = Evolution.pendingFor(ctx.game, newMon, { kind = "trade" })
+
+  if evoTo then
+    Evolution.evolve(
+      ctx.game,
+      newMon,
+      evoTo,
+      function() runner:resume() end,
+      evo and evo.method
+    )
+    runner:yield()
+  end
+  
   -- TradedForText (sound_get_key_item) then the dialogset's thanks
   require("src.core.Sound").play(data, "Get_Key_Item")
   say(texts.tradedFor or "_TradedForText")

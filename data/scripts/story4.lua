@@ -605,17 +605,7 @@ M.NAME_RATERS_HOUSE = {
                 local curName = mon.nickname or def.name or mon.species
                 -- NameRatersHouseCheckMonOTScript: a mon whose OT name
                 -- or OT ID isn't the player's can't be renamed
-                local player = game.save.player
-                local foreign = mon.traded
-                  or (mon.ot ~= nil and mon.ot ~= player.name)
-                  or (mon.otId ~= nil and player.id ~= nil
-                      and mon.otId ~= player.id)
-                if foreign then
-                  push(game, fill(t._NameRatersHouseNameRaterATrulyImpeccableNameText
-                    or "{RAM:}, is it?\nThat is a truly\nimpeccable name!\fTake good care of\n{RAM:}!",
-                    { ram = curName }), done)
-                  return
-                end
+                -- Removed to allow outsiders to be nicknamed.
                 ask(game, fill(t._NameRatersHouseNameRaterGiveItANiceNameText
                   or "{RAM:}, is it?\nThat is a decent\nnickname!\fBut, would you\nlike me to give\nit a nicer name?\fHow about it?",
                   { ram = curName }), function(rename)

@@ -1,0 +1,15 @@
+return {
+  summary = "Ensures Wenjin Mincho is loaded for the translation to work.",
+  author = "汐洛思",
+  contact = "https://github.com/ShiraTheMogul",
+  tags = { "mechanic" },
+  differences = {
+    changed = {
+      "RBY font -> Wenjin Mincho font",
+    },
+  },
+  credits = {
+    { who = "takushun-wu/WenjinMincho", for_ = "Making the font!" },
+  },
+  compat = { engine = ">=1.0.0 <2.0.0", modApi = 2 },
+}
