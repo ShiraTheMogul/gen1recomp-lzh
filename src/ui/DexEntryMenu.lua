@@ -13,6 +13,7 @@
 -- prompt off it).
 
 local Font = require("src.render.Font")
+local TextBox = require("src.render.TextBox")
 local Strings = require("src.core.Strings")
 
 local DexEntryMenu = {}
@@ -114,11 +115,19 @@ function DexEntryMenu.render(game, def, sprite, forceOwned, trueColor)
   end
   local text = owned and e.text and game.data.text[e.text] or nil
   local y = 72
+  local lineStep = math.max(10, Font.cellHeight())
   if text then
-    for line in (text:gsub("\v", "\n"):gsub("\f", "\n") .. "\n"):gmatch("(.-)\n") do
+    -- The dex used to trust hand-inserted \n/\f markers.  Run the description
+    -- through the same pixel-width wrapper as dialogue instead, then flatten
+    -- its pages because this screen has no textbox page-advance state.
+    local wrapped = TextBox.paginate(text, 18)
+    for _, page in ipairs(wrapped) do
+      for _, line in ipairs(page) do
+        if y > 132 then break end
+        Font.draw(line, 8, y)
+        y = y + lineStep
+      end
       if y > 132 then break end
-      Font.draw(line, 8, y)
-      y = y + 10
     end
   else
     Font.draw(Strings("Data unknown."), 8, y)

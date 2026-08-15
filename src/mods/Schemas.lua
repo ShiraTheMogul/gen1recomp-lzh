@@ -1770,6 +1770,7 @@ R.font = {
     f.rec({ file = f.opt(f.path), size = f.opt(f.int(1)),
             spacing = f.opt(f.num), yOffset = f.opt(f.num),
             bold = f.opt(f.bool),
+            advances = f.opt(f.map(f.str, f.num)),
             -- characters that keep their ROM tile instead of coming from the
             -- TTF: a string of them, or a list when a multi-character charmap
             -- sequence is meant (src/render/Font.lua)
@@ -1787,7 +1788,7 @@ R.font = {
     elseif fontIsTtf(id) then
       -- every field optional: {} is "the bundled font at its native size"
       if value.image ~= nil or value.base ~= nil then
-        return 'the "ttf" entry takes file/size/spacing/yOffset/bold/tiles, not a page'
+        return 'the "ttf" entry takes file/size/spacing/yOffset/bold/advances/tiles, not a page'
       end
     elseif value.image == nil or value.base == nil then
       return "a font page needs an image and a base"

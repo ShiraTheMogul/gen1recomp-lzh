@@ -22,6 +22,28 @@ local MAX_COLS = 18
 -- pokegold constants/ram_constants.asm: TEXT_DELAY_FAST/MED/SLOW = 1/3/5
 local NAME_DELAYS = { FAST = 1, MID = 3, SLOW = 5 }
 
+-- A plain translated string needs automatic two-line pages, but the public
+-- paginate() helper is also used by parity tests and non-dialogue renderers
+-- that expect all soft-wrapped lines to remain in one page.  Enable automatic
+-- pages only for actual East Asian dialogue at construction time.
+local function usesEastAsianText(text)
+  for _, span in ipairs(Font.split(text)) do
+    local code = span.code
+    if code and code >= Font.TTF_BASE then
+      local cp = code - Font.TTF_BASE
+      if (cp >= 0x2E80 and cp <= 0x30FF)
+        or (cp >= 0x31F0 and cp <= 0x31FF)
+        or (cp >= 0x3400 and cp <= 0x9FFF)
+        or (cp >= 0xAC00 and cp <= 0xD7AF)
+        or (cp >= 0xF900 and cp <= 0xFAFF)
+        or (cp >= 0x20000 and cp <= 0x2FA1F) then
+        return true
+      end
+    end
+  end
+  return false
+end
+
 -- opts.choice: when the last page has typed out, a YES/NO ChoiceBox pops
 -- up over the still-visible text (YesNoChoicePokeCenter and friends);
 -- the box then closes and choice(yes) runs instead of onDone.
@@ -68,7 +90,9 @@ function TextBox.new(game, text, onDone, opts)
   self.line1Y = (self.boxTy + 2) * 8
   self.line2Y = (self.boxTy + 4) * 8
   text = TextBox.substitute(game, text)
-  self.pages = TextBox.paginate(text, self.maxCols)
+  self.pages = TextBox.paginate(text, self.maxCols, {
+    autoPages = usesEastAsianText(text),
+  })
   self.pageIndex = 1
   self.lineIndex = 1
   self.charIndex = 0
@@ -174,61 +198,128 @@ end
 -- additional lines on the same page (the box scrolls them).
 -- pages.contBefore[p][i] is true when line i was preceded by \v (cont):
 -- pokered ContText waits for A/B + ▼ before scrolling that line in.
-function TextBox.paginate(text, maxCols)
+function TextBox.paginate(text, maxCols, opts)
   maxCols = maxCols or (Theme.textBox and Theme.textBox.maxCols) or MAX_COLS
   -- maxCols is a column count, so the budget is that many vanilla 8px
   -- cells.  Measuring in pixels rather than columns is what lets a mod's
   -- variable-advance page wrap correctly (#186).
   local budget = maxCols * 8
+  local autoPages = opts and opts.autoPages == true
   local pages = {}
   local contBefore = {}
+
+  -- Basic CJK line-breaking prohibition (禁則処理): closing punctuation
+  -- should travel with the preceding character, while opening punctuation
+  -- should travel with what follows.  These rules matter when a full 16px
+  -- Han cell shares a 144px textbox with narrower punctuation.
+  local noLineStart = {
+    ["，"] = true, ["。"] = true, ["、"] = true,
+    ["；"] = true, ["："] = true, ["！"] = true, ["？"] = true,
+    ["）"] = true, ["》"] = true, ["〉"] = true,
+    ["」"] = true, ["』"] = true, ["】"] = true, ["〕"] = true,
+    ["］"] = true, ["｝"] = true, ["”"] = true, ["’"] = true,
+  }
+  local noLineEnd = {
+    ["（"] = true, ["《"] = true, ["〈"] = true,
+    ["「"] = true, ["『"] = true, ["【"] = true, ["〔"] = true,
+    ["［"] = true, ["｛"] = true, ["“"] = true, ["‘"] = true,
+  }
+
+  local function spanText(line, span)
+    return line:sub(span.from, span.to)
+  end
+
   -- Soft-wrap on glyph boundaries, never byte boundaries: a line is over
   -- budget by what it *draws*, and the cut falls between glyphs so a
-  -- multi-byte char is never torn in half.
-  local function pushLine(lines, conts, line, wait)
+  -- multi-byte char is never torn in half.  auto[i] records that line i is a
+  -- continuation created by wrapping rather than an explicit \n or \v marker.
+  local function pushLine(lines, conts, auto, line, wait)
+    local continued = false
     while true do
       local spans = Font.split(line)
       local fit = Font.spansFitting(spans, budget)
       if fit >= #spans then break end
       -- a glyph wider than the whole box still has to advance by one
       fit = math.max(fit, 1)
-      local cut = spans[fit].to
+
+      local cutFit = fit
+      local cutAtSpace = false
       for i = fit, 1, -1 do
-        if line:sub(spans[i].from, spans[i].to) == " " then
-          cut = spans[i].to
+        if spanText(line, spans[i]) == " " then
+          cutFit = i
+          cutAtSpace = true
           break
         end
       end
+
+      -- With no word-space to use, apply the CJK prohibition rules.  If the
+      -- first glyph that did not fit is punctuation such as 。, move one or
+      -- more preceding glyphs with it so the next line begins with content.
+      -- Likewise, do not leave an opening quote/bracket at line end.
+      if not cutAtSpace then
+        while cutFit > 1 and spans[cutFit + 1]
+          and noLineStart[spanText(line, spans[cutFit + 1])] do
+          cutFit = cutFit - 1
+        end
+        while cutFit > 1 and noLineEnd[spanText(line, spans[cutFit])] do
+          cutFit = cutFit - 1
+        end
+      end
+
+      local cut = spans[cutFit].to
       table.insert(lines, line:sub(1, cut))
       table.insert(conts, wait)
+      table.insert(auto, continued)
       wait = false
+      continued = true
       line = line:sub(cut + 1)
     end
     table.insert(lines, line)
     table.insert(conts, wait)
+    table.insert(auto, continued)
   end
+
+  -- One explicit \f region can now contain ordinary prose with no hand-made
+  -- line/page markers.  Soft wrapping fills two visible rows, then starts a
+  -- normal next page.  Explicit \n and \v keep their old cartridge semantics:
+  -- only automatically-created continuation lines trigger automatic paging.
+  local function appendPage(lines, conts, auto)
+    local page, pageConts = {}, {}
+    for i, line in ipairs(lines) do
+      if autoPages and #page >= 2 and auto[i] and not conts[i] then
+        table.insert(pages, page)
+        table.insert(contBefore, pageConts)
+        page, pageConts = {}, {}
+      end
+      page[#page + 1] = line
+      pageConts[#pageConts + 1] = conts[i]
+    end
+    if #page > 0 then
+      table.insert(pages, page)
+      table.insert(contBefore, pageConts)
+    end
+  end
+
   for pageText in (text .. "\f"):gmatch("(.-)\f") do
     if pageText ~= "" then
-      local lines, conts = {}, {}
+      local lines, conts, auto = {}, {}, {}
       local pos, waitNext = 1, false
       while true do
         local npos = pageText:find("[\n\v]", pos)
         if not npos then
-          pushLine(lines, conts, pageText:sub(pos), waitNext)
+          pushLine(lines, conts, auto, pageText:sub(pos), waitNext)
           break
         end
-        pushLine(lines, conts, pageText:sub(pos, npos - 1), waitNext)
+        pushLine(lines, conts, auto, pageText:sub(pos, npos - 1), waitNext)
         waitNext = pageText:sub(npos, npos) == "\v"
         pos = npos + 1
       end
       if lines[#lines] == "" then
         table.remove(lines)
         table.remove(conts)
+        table.remove(auto)
       end
-      if #lines > 0 then
-        table.insert(pages, lines)
-        table.insert(contBefore, conts)
-      end
+      if #lines > 0 then appendPage(lines, conts, auto) end
     end
   end
   if #pages == 0 then
@@ -248,7 +339,12 @@ function TextBox:beginLine()
   self.codes = Font.encode(self:currentLine())
   if #self.shown >= 2 then
     table.remove(self.shown, 1)
-    self.scrollPx = 8 -- pixel scroll-up (ScrollTextUpOneLine)
+    -- Vanilla tile text keeps its historical 8px sub-scroll.  A tall TTF
+    -- needs to begin at the old second-row position instead of teleporting
+    -- halfway upward before the animation starts; the two textbox baselines
+    -- are 16px apart.
+    self.scrollPx = Font.cellHeight() > 8
+      and (self.line2Y - self.line1Y) or 8
   end
   table.insert(self.shown, {})
 end
@@ -447,6 +543,21 @@ function TextBox:draw()
   -- nothing in the original is ever drawn between two rows.
   local off = self.scrollPx or 0
   local ys = { self.line1Y, self.line2Y }
+
+  -- TTF glyph ink is not constrained to an 8px ROM tile.  Clip the prose to
+  -- the 144px horizontal text viewport, and to the textbox as a whole
+  -- vertically.  The latter deliberately leaves room for Wenjin's descender
+  -- punctuation while still preventing a scrolling row from escaping the box.
+  -- Restore any scissor owned by an outer renderer before drawing the arrow.
+  local g = love.graphics
+  local canClip = g.getScissor and g.setScissor and g.intersectScissor
+  local sx, sy, sw, sh
+  if canClip then
+    sx, sy, sw, sh = g.getScissor()
+    g.intersectScissor((self.boxTx + 1) * 8, self.boxTy * 8,
+      (self.boxTw - 2) * 8, self.boxTh * 8)
+  end
+
   for i, line in ipairs(self.shown) do
     local y = (ys[i] or self.line2Y) + (i == 1 and off or 0)
     -- the pen advances per glyph, matching the pixel budget paginate
@@ -456,6 +567,10 @@ function TextBox:draw()
       Font.drawCode(code, pen, y)
       pen = pen + Font.advanceOf(code)
     end
+  end
+
+  if canClip then
+    if sx ~= nil then g.setScissor(sx, sy, sw, sh) else g.setScissor() end
   end
   if (self.waiting or (self.done and not self.choice and not self.auto
                        and not self.stay))

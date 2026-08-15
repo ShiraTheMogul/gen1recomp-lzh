@@ -187,7 +187,7 @@ function Font.load(data)
       -- nearest keeps the pixel font crisp under the integer UI scale
       if obj.setFilter then pcall(obj.setFilter, obj, "nearest", "nearest") end
       state.ttf = {
-        font = obj, file = file,
+        font = obj, file = file, size = size,
         -- the font's own advances already carry a 1px gap at its design
         -- size; spacing adds to (or, negative, takes from) every advance
         spacing = def.ttf.spacing or 0,
@@ -209,6 +209,10 @@ function Font.load(data)
         -- identical to the English build -- while kana still come from the
         -- font.  Sequence keys, so "é" or a "<PK>" macro can be listed too.
         tiles = tileSet(def.ttf.tiles),
+        -- Optional per-character pen advances.  This lets a translation keep
+        -- a large CJK em square for legibility while giving punctuation a
+        -- narrower logical cell (for example 16px Han + 8px ，/。).
+        advances = def.ttf.advances or {},
         widths = {}, chars = {},
       }
     else
@@ -220,6 +224,11 @@ end
 
 function Font.ttfActive()
   return state ~= nil and state.ttf ~= nil
+end
+
+function Font.cellHeight()
+  local ttf = state and state.ttf
+  return ttf and ttf.size or GLYPH
 end
 
 -- re-run load against the data it last saw, so hot reload picks up an
@@ -471,8 +480,12 @@ function Font.advanceOf(code)
   if ttf and code >= TTF_BASE then
     local w = ttf.widths[code]
     if not w then
-      w = ttf.font:getWidth(ttfChar(ttf, code)) + ttf.spacing
-        + (ttf.bold and 1 or 0)
+      local ch = ttfChar(ttf, code)
+      w = ttf.advances[ch]
+      if w == nil then
+        w = ttf.font:getWidth(ch) + ttf.spacing
+          + (ttf.bold and 1 or 0)
+      end
       ttf.widths[code] = w
     end
     return w
