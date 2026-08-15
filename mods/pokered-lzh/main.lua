@@ -2,7 +2,7 @@ return function(mod)
 
   mod.content.font:register("ttf", {
     file = "assets/fonts/wenjin-mincho/WenJinMinchoP0-Regular.ttf",
-    size = 12,
+    size = 16,
     tiles = "0123456789",
   })
 
