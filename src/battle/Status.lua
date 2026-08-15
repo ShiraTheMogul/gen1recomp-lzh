@@ -73,7 +73,7 @@ Status.RECORDS = {
           "%s\nwoke up!", name(battler)) }
       end
       return false, { romText(battle and battle.data, "_FastAsleepText",
-        "%s\nis fast asleep!", name(battler)) }
+        "%s\nis fast asleep!", name(battler)), cue = "sleep" }
     end,
     onInflict = function(battle, target, opts, display)
       target.sleepTurns = battle.rng(1, 7)
@@ -132,7 +132,7 @@ Status.RECORDS = {
       -- cp 25 percent / jr nc: fully paralyzed on rand < 63 (63/256)
       if rng(0, 255) < 63 then
         return false, { romText(battle and battle.data, "_FullyParalyzedText",
-          "%s's\nfully paralyzed!", name(battler)) }
+          "%s's\nfully paralyzed!", name(battler)), interrupt = "full_paralysis" }
       end
       return true, {}
     end,
@@ -188,7 +188,18 @@ function Status.beforeMove(battler, rng, battle, selectedMoveId)
   local msgs = {}
   local function runStatus()
     local canMove, statusMsgs, selfHit = handler(battler, rng, battle)
+    local first = #msgs + 1
     for _, m in ipairs(statusMsgs or {}) do msgs[#msgs + 1] = m end
+    -- Message arrays may also carry semantic metadata.  Keep it separate
+    -- from the rendered prose so localisation can rewrite the sentence
+    -- without changing battle behaviour.
+    if statusMsgs and statusMsgs.cue and #msgs >= first then
+      msgs.cues = msgs.cues or {}
+      msgs.cues[first] = statusMsgs.cue
+    end
+    if statusMsgs and statusMsgs.interrupt then
+      msgs.interrupt = statusMsgs.interrupt
+    end
     return canMove, selfHit
   end
   if handler and priority > VOLATILE_PRIORITY then
@@ -219,6 +230,8 @@ function Status.beforeMove(battler, rng, battle, selectedMoveId)
     else
       table.insert(msgs, romText(battle and battle.data, "_IsConfusedText",
         "%s\nis confused!", name(battler)))
+      msgs.cues = msgs.cues or {}
+      msgs.cues[#msgs] = "confused"
       -- cp 50 percent + 1 / jr c: hurt itself on rand >= 128 (128/256)
       if rng(0, 255) < 128 then
         return false, msgs, true -- hurt itself

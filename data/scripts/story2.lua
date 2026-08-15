@@ -502,7 +502,7 @@ function BikeShopWindow:draw()
   local bike = self.game.data.items.BICYCLE
   Font.draw(bike and bike.name or "BICYCLE", 16, 16)  -- hlcoord 2, 2
   Font.draw("¥1000000", 64, 24)                       -- hlcoord 8, 3
-  Font.draw(Strings("CANCEL"), 16, 32)                -- `next` skips a row
+  Font.draw(Strings("罷"), 16, 32)                -- `next` skips a row
   -- wTopMenuItemX 1, wTopMenuItemY 2, rows two apart
   Font.drawCode(Theme.cursor, 8, self.index == 1 and 16 or 32)
   if self.footer then

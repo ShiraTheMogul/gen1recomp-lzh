@@ -485,10 +485,10 @@ function StatBox:draw()
   love.graphics.setColor(0, 0, 0, 1)
   local s = self.mon.stats
   -- labels through Strings so a mod catalog translates them (#811)
-  local rows = { { Strings("ATTACK"), s.attack },
-                 { Strings("DEFENSE"), s.defense },
-                 { Strings("SPEED"), s.speed },
-                 { Strings("SPECIAL"), s.special } }
+  local rows = { { Strings("力"), s.attack },
+                 { Strings("守"), s.defense },
+                 { Strings("速"), s.speed },
+                 { Strings("異能"), s.special } }
   for i, r in ipairs(rows) do
     Font.draw(Strings(r[1]), 88, 24 + (i - 1) * 16)
     Font.draw(("%3d"):format(r[2]), 128, 32 + (i - 1) * 16)
@@ -829,10 +829,10 @@ end
 -- what LoadEnemyMonData puts back when the scope unveils.
 local function disguiseAsGhost(self)
   self.ghostReal = { name = self.enemy.name, sprite = self.enemy.sprite }
-  self.enemy.name = "GHOST"
+  self.enemy.name = "鬼"
   self.enemy.sprite = getImage("assets/generated/battle/front/ghost.png",
                                monPalette(self.data, self.enemy.mon.species))
-  self.introText = Strings("The GHOST\nappeared!")
+  self.introText = Strings("鬼出！")
 end
 
 -- Pokémon Tower ghosts (engine/battle/core.asm): without the Silph Scope
@@ -875,7 +875,7 @@ BattleState.GHOST_REVEAL_FRAMES = 150
 function BattleState:queueScopeReveal()
   local unveiled = self.data.text and self.data.text._UnveiledGhostText
   self:say(unveiled
-           or Strings("SILPH SCOPE\nunveiled the\vGHOST's identity!"))
+           or Strings("氣仙鬼鏡示御魂之身！"))
   self:act(function() self.ghostReveal = { t = 0 } end)
   table.insert(self.queue, { wait = BattleState.GHOST_REVEAL_FRAMES })
   self:say(self:romText("_WildMonAppearedText", "Wild %s\nappeared!",
@@ -901,7 +901,7 @@ end
 -- tutorial passes failThrow -- it stands in for that event (#636).
 function BattleState:makeOldManDemo(name, failThrow)
   self.demo = true
-  self.demoName = name or Strings("OLD MAN")
+  self.demoName = name and Strings(name) or Strings("OLD MAN")
   self.demoFails = failThrow and true or false
   -- LoadPlayerBackPic and DisplayBattleMenu split on the same wBattleType:
   -- BATTLE_TYPE_OLD_MAN gets .oldManName + OldManPicBack, BATTLE_TYPE_PIKACHU
@@ -1499,10 +1499,10 @@ function BattleState:sendOutText(name)
   if e and e.hp > 0 and math.floor(e.stats.hp / 4) > 0 then
     pct = math.floor(e.hp * 25 / math.floor(e.stats.hp / 4))
   end
-  if pct >= 70 then return Strings("Go! %s!", name) end
-  if pct >= 40 then return Strings("Do it! %s!", name) end
-  if pct >= 10 then return Strings("Get'm! %s!", name) end
-  return self:romText("_EnemysWeakText", "The enemy's weak!\nGet'm! %s!", name)
+  if pct >= 70 then return Strings("行！ %s!", name) end
+  if pct >= 40 then return Strings("勉之！ %s!", name) end
+  if pct >= 10 then return Strings("克之！ %s!", name) end
+  return self:romText("_EnemysWeakText", "敵害矣！壮哉，%s!", name)
 end
 
 -- The cry a mon makes as it takes the field.  Yellow does not run its
@@ -1621,8 +1621,8 @@ function BattleState:enter()
     -- playerMonFainted queues on the battle screen; there is no battle
     -- screen to queue them on here, so they print over the map.
     self.game.stack:push(require("src.render.TextBox").new(self.game,
-      Strings("%s is out of\nuseable POKéMON!", name) .. "\f"
-      .. Strings("%s blacked\nout!", name), blackedOut))
+      Strings("%s 之㬺獸尽矣！", name) .. "\f"
+      .. Strings("%s 冥矣！", name), blackedOut))
     return
   end
   self.musicKind = self:computeMusicKind()
@@ -1758,7 +1758,7 @@ function BattleState:enter()
       self.enemySendingOut = true
       self:slidePic("foe")
     end)
-    self:say(Strings("%s sent\nout %s!", foeName, self.enemy.name))
+    self:say(Strings("%s發%s!", foeName, self.enemy.name))
     self:act(function()
       -- EnemySendOutFirstMon (core.asm:1421-1434): after the text the
       -- pic grows out of the ball (AnimateSendingOutMon), then the cry
@@ -2032,7 +2032,7 @@ function BattleState:update(dt)
 
   if self.phase == "menu" and self.safari then
     if self.safari.balls <= 0 then
-      self:say(Strings("PA: You're out of\nSAFARI BALLs!\nGame over!"))
+      self:say(Strings("侍從： 君獲獸毬尽矣！休矣！"))
       self.phase = "messages"
       self.result = "run"
       self.afterQueue = "finish"
@@ -2102,7 +2102,7 @@ function BattleState:update(dt)
       require("src.core.Sound").play(self.data, "Press_AB")
       local choice = ({ "fight", "pkmn", "item", "run" })[self.menuIndex]
       if choice == "fight" and self.ghost then
-        self:say(Strings("%s is too\nscared to move!", self.player.name))
+        self:say(Strings("%s重足而立！", self.player.name))
         self.phase = "messages"
         self.afterQueue = "menu"
         self:act(function()
@@ -2122,7 +2122,7 @@ function BattleState:update(dt)
         end
         if not self:playerHasPP() then
           -- _NoMovesLeftText, then Struggle engages
-          self:say(Strings("%s has no\nmoves left!", self.player.name))
+          self:say(Strings("%s無技可發！", self.player.name))
           self:resolveTurn({ id = "STRUGGLE", pp = 1, struggle = true })
           return
         end
@@ -2175,11 +2175,11 @@ function BattleState:update(dt)
       end
       local mv = moves[self.moveIndex]
       if self.player.disabledSlot == self.moveIndex then
-        self:say(self:romText("_MoveDisabledText", "The move is\ndisabled!"))
+        self:say(self:romText("_MoveDisabledText", "技錮矣！"))
         self.phase = "messages"
         self.afterQueue = "menu"
       elseif mv.pp <= 0 then
-        self:say(self:romText("_MoveNoPPText", "No PP left for\nthis move!"))
+        self:say(self:romText("_MoveNoPPText", "技力竭矣！"))
         self.phase = "messages"
         self.afterQueue = "menu"
       else
@@ -2347,7 +2347,7 @@ function BattleState:openOldManBag()
     -- the Viridian tutorial and Oak's catch, has one.
     local qty = require("src.core.GameVersion").isYellow() and "x1" or "x50"
     list = ListMenu.new(game, "ITEMS", {
-      { value = "POKE_BALL", label = Strings("POKé BALL"), right = qty },
+      { value = "POKE_BALL", label = Strings("獸毬"), right = qty },
     }, {
       script = function(l)
         l.scriptTimer = (l.scriptTimer or 0) + 1
@@ -2380,7 +2380,7 @@ function BattleState:oldManThrow()
   self.phase = "messages"
   self.afterQueue = "finish"
   self.result = "run" -- nothing is kept; wBattleResult only ends the demo
-  self:sayAuto(Strings("%s used\nPOKé BALL!", self.demoName or Strings("OLD MAN")))
+  self:sayAuto(Strings("%s用獸毬!", self.demoName or Strings("OLD MAN")))
   self:act(function()
     require("src.core.Sound").play(self.data, "Ball_Toss")
     -- ItemUseBall's beat before the toss chain (like throwBall)
@@ -2397,7 +2397,7 @@ function BattleState:oldManThrow()
     self:ballChain("TOSS_ANIM", true, 3, "POKE_BALL")
     -- ItemUseBallText05: text_far, sound_caught_mon, text_promptbutton --
     -- the fanfare follows the caught text and holds the prompt
-    self:sayNextWaitSfx(Strings("All right!\n%s was\ncaught!", self.enemy.name),
+    self:sayNextWaitSfx(Strings("善哉！獲%s！", self.enemy.name),
       function() return require("src.core.Sound").play(self.data, "Caught_Mon") end)
   end)
 end
@@ -3387,7 +3387,7 @@ function BattleState:executeAction(user, target, action)
     -- ghost battles: the ghost never attacks; its whole turn is the
     -- GetOutText (ExecuteEnemyMove -> PrintGhostText, core.asm:5462-5463)
     if self.ghost and not user.isPlayer then
-      self:sayNext(self.data.text._GetOutText or Strings("GHOST: Get out...\nGet out..."))
+      self:sayNext(self.data.text._GetOutText or Strings("鬼： 去矣……去矣……"))
       return
     end
 
@@ -3438,7 +3438,7 @@ function BattleState:executeAction(user, target, action)
       markSeen(self.game, self.enemy.mon.species)
       -- _AIBattleWithdrawText: "X with-/drew Y!"
       self:sayNext(Strings("%s with-\ndrew %s!", self.trainer.name, oldName))
-      self:sayNext(Strings("%s sent\nout %s!", self.trainer.name, self.enemy.name))
+      self:sayNext(Strings("%s發%s!", self.trainer.name, self.enemy.name))
       return
     end
 
@@ -3451,7 +3451,7 @@ function BattleState:executeAction(user, target, action)
       -- 3392): sleep/freeze/held/flinch keep the mon recharging next turn
       if self:preRechargeChecks(user, target) then return end
       user.mustRecharge = nil
-      self:sayNext(self:romText("_MustRechargeText", "%s\nmust recharge!", displayName(user)))
+      self:sayNext(self:romText("_MustRechargeText", "力竭！%s須息！", displayName(user)))
       return
     end
     if action.special == "bound" then
@@ -3493,7 +3493,7 @@ end
 -- (core.asm): side-specific SLP_*/CONF_* anims, not the Rest/Amnesia
 -- move rows.  Player sleep plays the anim before FastAsleepText;
 -- enemy sleep and both confusion sides print the text first.
-function BattleState:statusOnomatopoeia(user, kind)
+function BattleState:statusOnomatopoeia(user, kind, text)
   local isPlayer = user.isPlayer
   local anim
   if kind == "sleep" then
@@ -3501,9 +3501,9 @@ function BattleState:statusOnomatopoeia(user, kind)
   else
     anim = isPlayer and "CONF_PLAYER_ANIM" or "CONF_ANIM"
   end
-  local text = kind == "sleep"
+  text = text or (kind == "sleep"
     and self:romText("_FastAsleepText", "%s\nis fast asleep!", displayName(user))
-    or self:romText("_IsConfusedText", "%s\nis confused!", displayName(user))
+    or self:romText("_IsConfusedText", "%s\nis confused!", displayName(user)))
   if kind == "sleep" and isPlayer then
     self:animNext(anim, isPlayer)
     self:sayNext(text)
@@ -3513,14 +3513,13 @@ function BattleState:statusOnomatopoeia(user, kind)
   end
 end
 
--- Queue status text (+ sleep/confusion FX when the line matches).
--- Wake / snap-out / flinch / etc. stay text-only.
-function BattleState:sayStatusMsg(user, msg)
+-- Queue status text.  The status engine supplies the semantic cue; never
+-- infer sleep/confusion by inspecting translated prose.  Wake / snap-out /
+-- flinch / etc. have no cue and stay text-only.
+function BattleState:sayStatusMsg(user, msg, cue)
   local text = prefixEnemy(msg, user)
-  if msg:find("is fast asleep!", 1, true) then
-    self:statusOnomatopoeia(user, "sleep")
-  elseif msg:find("is confused!", 1, true) then
-    self:statusOnomatopoeia(user, "confused")
+  if cue == "sleep" or cue == "confused" then
+    self:statusOnomatopoeia(user, cue, text)
   else
     self:sayNext(text)
   end
@@ -3542,18 +3541,18 @@ function BattleState:preRechargeChecks(user, target)
     user.sleepTurns = (user.sleepTurns or 1) - 1
     if user.sleepTurns <= 0 then
       mon.status = nil
-      self:sayNext(self:romText("_WokeUpText", "%s\nwoke up!", displayName(user)))
+      self:sayNext(self:romText("_WokeUpText", "%s醒矣！", displayName(user)))
     else
       self:statusOnomatopoeia(user, "sleep")
     end
     return true
   end
   if mon.status == "FRZ" then
-    self:sayNext(self:romText("_IsFrozenText", "%s\nis frozen solid!", displayName(user)))
+    self:sayNext(self:romText("_IsFrozenText", "%s凍結！", displayName(user)))
     return true
   end
   if target.trappingTurns then
-    self:sayNext(self:romText("_CantMoveText", "%s\ncan't move!", displayName(user)))
+    self:sayNext(self:romText("_CantMoveText", "%s不能動！", displayName(user)))
     return true
   end
   if user.flinched then
@@ -3561,7 +3560,7 @@ function BattleState:preRechargeChecks(user, target)
     -- player recharges, so the flinch eats the recharge turn and the
     -- flag survives (the Hyper Beam flinch glitch)
     user.flinched = false
-    self:sayNext(self:romText("_FlinchedText", "%s\nflinched!", displayName(user)))
+    self:sayNext(self:romText("_FlinchedText", "%s畏縮不前！", displayName(user)))
     return true
   end
   return false
@@ -3571,7 +3570,9 @@ end
 -- returns true when the user's action is interrupted.
 function BattleState:statusInterrupt(user, target, selectedId)
   local canMove, msgs, selfHit = Status.beforeMove(user, self.rng, self, selectedId)
-  for _, m in ipairs(msgs) do self:sayStatusMsg(user, m) end
+  for i, m in ipairs(msgs) do
+    self:sayStatusMsg(user, m, msgs.cues and msgs.cues[i])
+  end
   if selfHit then
     -- confusion self-hit (core.asm:3428-3434): clears everything in
     -- status1 except CONFUSED, then HandleSelfConfusionDamage deals a
@@ -3582,7 +3583,7 @@ function BattleState:statusInterrupt(user, target, selectedId)
                                    { id = "CONFUSED", power = 40, type = "NORMAL", accuracy = 100 },
                                    { rng = self.rng, forceCrit = false, typeless = true,
                                      screens = target })
-    self:sayNext(self:romText("_HurtItselfText", "It hurt itself in\nits confusion!"))
+    self:sayNext(self:romText("_HurtItselfText", "誤傷己身！"))
     self:clearVolatiles(user, true)
     self:applyDamage(user, dmg)
     if user.mon.hp <= 0 then self:onFaint(user) end
@@ -3592,8 +3593,7 @@ function BattleState:statusInterrupt(user, target, selectedId)
     -- full paralysis (core.asm:3459-3464) clears bide/thrash/charge/
     -- trapping; sleep, freeze, flinch and held-in-place leave every
     -- volatile in place (a sleeping wrapper keeps its victim held)
-    if user.mon.status == "PAR" and msgs[#msgs]
-       and msgs[#msgs]:find("fully paralyzed", 1, true) then
+    if msgs.interrupt == "full_paralysis" then
       self:clearVolatiles(user, false)
     end
     return true
@@ -3628,16 +3628,7 @@ end
 -- two failure lines name the move, not the failure (#644).
 local function primaryEffectFailed(msgs)
   if not msgs or #msgs == 0 then return true end
-  if msgs.failed then return true end
-  -- the extracted lines keep the ROM's own trailing blank ("But, it
-  -- failed! "), so match with it trimmed or a refused status animates
-  local m = msgs[1]:gsub("%s+$", "")
-  if m == "But, it failed!" or m == "Nothing happened!" then return true end
-  if m:find("didn't affect", 1, true) then return true end
-  if m:find("is unaffected", 1, true) then return true end
-  if m:find("protected by MIST", 1, true) then return true end
-  if m:find("Already", 1, true) then return true end
-  return false
+  return msgs.failed == true
 end
 
 function BattleState:performMove(user, target, moveInst, isCalled)

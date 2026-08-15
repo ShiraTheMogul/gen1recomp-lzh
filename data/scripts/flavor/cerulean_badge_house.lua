@@ -46,7 +46,7 @@ local function middleAgedMan(game, ow, npc, done)
       -- DisplayListMenuID list ends in an on-screen CANCEL row; picking it
       -- takes DisplayListMenuIDLoop's ExitListMenu path, the same .done
       -- exit as B (#569)
-      items[#items + 1] = { label = Strings("CANCEL") }
+      items[#items + 1] = { label = Strings("罷") }
       local menu = ListMenu.new(game, "", items, {
         onChoose = function(item)
           game.stack:pop()

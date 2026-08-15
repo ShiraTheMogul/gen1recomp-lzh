@@ -26,6 +26,17 @@ local function displayName(b)
   return b.isPlayer and b.name or Strings("Enemy %s", b.name)  -- #779
 end
 
+-- Message arrays carry semantic outcome metadata alongside their printable
+-- rows.  BattleState uses `failed` to suppress status/stat move animations;
+-- wording is deliberately irrelevant so translations cannot alter mechanics.
+local function failedText(text)
+  return { text, failed = true }
+end
+
+local function failedRomText(battle, label, fallback, ...)
+  return failedText(romText(battle.data, label, fallback, ...))
+end
+
 -- Stat names as printed (data/battle/stat_mod_names.asm
 -- StatModTextStrings).  Strings.source, not Strings: this table is built
 -- at require time, before Strings.load has a catalog, so changeStage
@@ -43,14 +54,14 @@ local STAT_LABEL = {
 local function changeStage(battle, who, stat, delta, fromEnemy)
   if fromEnemy and (who.substituteHP or who.mist) then
     if who.mist then
-      return { Strings("%s is\nprotected by MIST!", displayName(who)) }
+      return failedText(Strings("%s is\nprotected by MIST!", displayName(who)))
     end
-    return { romText(battle.data, "_ButItFailedText", "But, it failed!") }
+    return failedRomText(battle, "_ButItFailedText", "But, it failed!")
   end
   local cur = who.stages[stat] or 0
   local new = math.max(-6, math.min(6, cur + delta))
   if new == cur then
-    return { romText(battle.data, "_NothingHappenedText", "Nothing happened!") }
+    return failedRomText(battle, "_NothingHappenedText", "Nothing happened!")
   end
   who.stages[stat] = new
   -- effects.asm:505-506: after any stat-stage change, modified stats are
@@ -96,10 +107,10 @@ end
 local function statusMove(status)
   return function(battle, user, target, move)
     if target.mon.status then
-      return { romText(battle.data, "_ButItFailedText", "But, it failed!") }
+      return failedRomText(battle, "_ButItFailedText", "But, it failed!")
     end
     if status == "PSN" and target.substituteHP then
-      return { romText(battle.data, "_ButItFailedText", "But, it failed!") }
+      return failedRomText(battle, "_ButItFailedText", "But, it failed!")
     end
     local msgs = inflictStatus(battle, target, status, {
       toxic = move and move.id == "TOXIC",
@@ -107,7 +118,7 @@ local function statusMove(status)
       source = move and move.id,
     })
     if #msgs == 0 then
-      return { romText(battle.data, "_ButItFailedText", "But, it failed!") }
+      return failedRomText(battle, "_ButItFailedText", "But, it failed!")
     end
     return msgs
   end
@@ -152,7 +163,7 @@ end
 
 local function confuse(battle, target, pierceSub)
   if target.confusedTurns or (target.substituteHP and not pierceSub) then
-    return { romText(battle.data, "_ButItFailedText", "But, it failed!") }
+    return failedRomText(battle, "_ButItFailedText", "But, it failed!")
   end
   target.confusedTurns = battle.rng(2, 5)
   return { romText(battle.data, "_BecameConfusedText", "%s\nbecame confused!", displayName(target)) }
@@ -189,10 +200,10 @@ MoveEffects.primary = {
   LEECH_SEED_EFFECT = function(battle, user, target)
     -- leech_seed.asm has no substitute check: seeding lands through one
     if target.leechSeeded then
-      return { romText(battle.data, "_ButItFailedText", "But, it failed!") }
+      return failedRomText(battle, "_ButItFailedText", "But, it failed!")
     end
     for _, t in ipairs(target.curTypes) do
-      if t == "GRASS" then return { romText(battle.data, "_ButItFailedText", "But, it failed!") } end
+      if t == "GRASS" then return failedRomText(battle, "_ButItFailedText", "But, it failed!") end
     end
     target.leechSeeded = true
     return { romText(battle.data, "_WasSeededText", "%s\nwas seeded!", displayName(target)) }
@@ -201,39 +212,39 @@ MoveEffects.primary = {
   HEAL_EFFECT = function(battle, user, target, move)
     local mon = user.mon
     if move.id == "REST" then
-      if mon.hp == mon.stats.hp then return { romText(battle.data, "_ButItFailedText", "But, it failed!") } end
+      if mon.hp == mon.stats.hp then return failedRomText(battle, "_ButItFailedText", "But, it failed!") end
       mon.hp = mon.stats.hp
       mon.status = "SLP"
       user.sleepTurns = 2
       user.toxicCounter = nil
       return { romText(battle.data, "_StartedSleepingEffect", "%s\nstarted sleeping!", displayName(user)) }
     end
-    if mon.hp == mon.stats.hp then return { romText(battle.data, "_ButItFailedText", "But, it failed!") } end
+    if mon.hp == mon.stats.hp then return failedRomText(battle, "_ButItFailedText", "But, it failed!") end
     mon.hp = math.min(mon.stats.hp, mon.hp + math.floor(mon.stats.hp / 2))
     return { romText(battle.data, "_RegainedHealthText", "%s\nregained health!", displayName(user)) }
   end,
 
   LIGHT_SCREEN_EFFECT = function(battle, user)
-    if user.lightScreen then return { romText(battle.data, "_ButItFailedText", "But, it failed!") } end
+    if user.lightScreen then return failedRomText(battle, "_ButItFailedText", "But, it failed!") end
     user.lightScreen = true
     return { romText(battle.data, "_LightScreenProtectedText", "%s's\nprotected against\nspecial attacks!", displayName(user)) }
   end,
 
   REFLECT_EFFECT = function(battle, user)
-    if user.reflect then return { romText(battle.data, "_ButItFailedText", "But, it failed!") } end
+    if user.reflect then return failedRomText(battle, "_ButItFailedText", "But, it failed!") end
     user.reflect = true
     return { romText(battle.data, "_ReflectGainedArmorText", "%s\ngained armor!", displayName(user)) }
   end,
 
   MIST_EFFECT = function(battle, user)
-    if user.mist then return { romText(battle.data, "_ButItFailedText", "But, it failed!") } end
+    if user.mist then return failedRomText(battle, "_ButItFailedText", "But, it failed!") end
     user.mist = true
     -- _ShroudedInMistText (lowercase "mist")
     return { romText(battle.data, "_ShroudedInMistText", "%s's\nshrouded in mist!", displayName(user)) }
   end,
 
   FOCUS_ENERGY_EFFECT = function(battle, user)
-    if user.focusEnergy then return { romText(battle.data, "_ButItFailedText", "But, it failed!") } end
+    if user.focusEnergy then return failedRomText(battle, "_ButItFailedText", "But, it failed!") end
     user.focusEnergy = true
     return { romText(battle.data, "_GettingPumpedText", "%s's\ngetting pumped!", displayName(user)) }
   end,
@@ -298,7 +309,7 @@ MoveEffects.primary = {
   CONVERSION_EFFECT = function(battle, user, target)
     -- conversion.asm fails against a mid-Fly/Dig target (INVULNERABLE)
     if target.invulnerable then
-      return { romText(battle.data, "_ButItFailedText", "But, it failed!") }
+      return failedRomText(battle, "_ButItFailedText", "But, it failed!")
     end
     user.curTypes = { target.curTypes[1], target.curTypes[2] }
     -- _ConvertedTypeText
@@ -337,12 +348,12 @@ MoveEffects.primary = {
   end,
 
   DISABLE_EFFECT = function(battle, user, target)
-    if target.disabledSlot then return { romText(battle.data, "_ButItFailedText", "But, it failed!") } end
+    if target.disabledSlot then return failedRomText(battle, "_ButItFailedText", "But, it failed!") end
     local usable = {}
     for i, mv in ipairs(target.curMoves) do
       if mv.pp > 0 then table.insert(usable, i) end
     end
-    if #usable == 0 then return { romText(battle.data, "_ButItFailedText", "But, it failed!") } end
+    if #usable == 0 then return failedRomText(battle, "_ButItFailedText", "But, it failed!") end
     local slot = usable[battle.rng(1, #usable)]
     target.disabledSlot = slot
     target.disabledTurns = battle.rng(1, 8)
