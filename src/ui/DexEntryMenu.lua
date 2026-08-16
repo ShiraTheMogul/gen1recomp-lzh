@@ -131,7 +131,7 @@ function DexEntryMenu.render(game, def, sprite, forceOwned, trueColor)
     -- The species name owns the full 16px Wenjin face.  The classification is
     -- secondary metadata, so give it the 12px face used around the measurement
     -- block rather than letting two full-height Han rows scrape each other.
-    Font.drawSized(kind, 72, 21, DEX_KIND_SIZE)
+    Font.drawSized(kind, 72, 16, DEX_KIND_SIZE)
   else
     -- Preserve the cartridge layout exactly when no Unicode TTF is active.
     Font.draw(kind, 72, 20)
