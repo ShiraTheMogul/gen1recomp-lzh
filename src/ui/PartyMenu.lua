@@ -11,6 +11,7 @@
 
 local Assets = require("src.render.Assets")
 local Font = require("src.render.Font")
+local HanNumber = require("src.render.HanNumber")
 local Logger = require("src.core.Logger")
 local Runtime = require("src.mods.Runtime")
 local Screens = require("src.ui.Screens")
@@ -18,6 +19,7 @@ local Theme = require("src.ui.Theme")
 local FieldDefaults = require("src.world.FieldDefaults")
 local Map = require("src.world.Map")
 local Strings = require("src.core.Strings")
+local Status = require("src.battle.Status")
 
 local PartyMenu = {}
 PartyMenu.__index = PartyMenu
@@ -63,7 +65,15 @@ function PartyMenu:sgbPalettes(game)
       if self.heal and self.heal.mon == mon then hp = self.heal.from end
       local bar = P.pal(game.data, P.barPalName(hp, mon.stats.hp))
       if bar then
-        zones[#zones + 1] = P.zone(bar, 6, i * 2 - 1, 12, i * 2 - 1)
+        if Font.cellHeight() > 8 then
+          -- The Han layout keeps the Gen-I party HP bar, but places it after
+          -- the name rather than under the icon.  Give the whole possible
+          -- translated bar span the row's HP palette; the actual bar width is
+          -- chosen dynamically in draw() so long species names still fit.
+          zones[#zones + 1] = P.zone(bar, 9, i * 2 - 2, 16, i * 2 - 1)
+        else
+          zones[#zones + 1] = P.zone(bar, 6, i * 2 - 1, 12, i * 2 - 1)
+        end
       end
     end
   end
@@ -827,58 +837,99 @@ function PartyMenu:draw()
     love.graphics.setColor(1, 1, 1, 1)
     PartyMenu.drawIcon(self.game, mon, 8, y, i == self.index, self.blink or 0)
     love.graphics.setColor(0, 0, 0, 1)
-    Font.draw(mon.nickname or def.name, 24, y)
-    -- level at column 13 (<LV> tile + digits, PrintLevel) AND the
-    -- status/FNT text at column 17 (PrintStatusCondition), like the
-    -- original rows -- statused mons keep their level display
-    if mon.level < 100 then
-      HudTiles.tile(0x6E, 104, y) -- <LV>
-      Font.draw(tostring(mon.level), 112, y)
-    else
-      -- PrintLevel overwrites the <LV> tile with the third digit
-      Font.draw(tostring(mon.level), 104, y)
-    end
-    if self.tmhm then
-      -- TM/HM teaching menu (engine/menus/party_menu.asm PrintPartyMenu):
-      -- the second row shows the inline "ABLE" / "NOT ABLE" learnability
-      -- strings in place of the HP bar and status, decided by CanLearnTM.
-      -- The learnset scan mirrors ItemEffects.use so the display can never
-      -- disagree with the actual teach. #210
-      local can = false
-      for _, m in ipairs(def.tmhm or {}) do
-        if m == self.tmhm.move then can = true break end
-      end
-      -- right-aligned so the shorter "ABLE" shares "NOT ABLE"'s right edge
-      if can then
-        Font.draw(Strings("ABLE"), 120, y + 8)
-      else
-        Font.draw(Strings("NOT ABLE"), 88, y + 8)
-      end
-    else
+    local name = mon.nickname or def.name
+    if Font.cellHeight() > 8 then
+      -- Six party entries still use the cartridge's two-row rhythm.  Preserve
+      -- the Gen-I HP bar: the name occupies the left of the upper band, then
+      -- the meter begins immediately after it.  Level/status and the numeric
+      -- HP ratio stay on the far right, so no extra vertical row is required.
+      local meta
       if mon.hp <= 0 then
-        Font.draw(Strings("FNT"), 136, y)
+        meta = Strings("FNT")
       elseif mon.status then
-        Font.draw(mon.status, 136, y)
+        local record = Status.recordFor(self.game.data.statuses, mon.status)
+        meta = (record and (record.hudLabel or record.label)) or mon.status
+      else
+        meta = HanNumber.format(mon.level) .. Strings("LEVEL_SUFFIX")
       end
-      -- the tile HP bar (DrawHP2 + SetPartyMenuHPBarColor).  grayFill:
-      -- tinting the fill AND running it through the row's zone
-      -- double-applies -- a green fill has red channel 0, so the tint
-      -- zeroes the bar's red and the zone's red-keyed shade shader then
-      -- maps every pixel to color 3, i.e. black.  That is the #229 hazard
-      -- HudTiles documents; #274 (with #272) is this screen's instance.
-      --
-      -- While a medicine's UpdateHPBar2 fill runs, this row draws the HP the
-      -- animation has reached rather than the final value; drawHPBar reads
-      -- only .hp and .stats, so a shim table is enough and the real mon is
-      -- never mutated for display (#252).
-      local shown = mon
-      if self.heal and self.heal.mon == mon then
-        shown = { hp = math.floor(self.heal.shown), stats = mon.stats }
+      local nameRoom = 52 -- x=24..76; the HP bar begins at x=80
+      local nameSize = 10
+      for _, size in ipairs({ 14, 12, 10 }) do
+        if Font.widthSized(name, size) <= nameRoom then
+          nameSize = size
+          break
+        end
       end
-      love.graphics.setColor(1, 1, 1, 1)
-      HudTiles.drawHPBar(self.game.data, 5, (y + 8) / 8, shown, nil, barZoned)
-      love.graphics.setColor(0, 0, 0, 1)
-      Font.draw(("%3d/%3d"):format(shown.hp, mon.stats.hp), 104, y + 8)
+      Font.drawSized(name, 24, y + 1, nameSize)
+
+      if self.tmhm then
+        local can = false
+        for _, m in ipairs(def.tmhm or {}) do
+          if m == self.tmhm.move then can = true break end
+        end
+        local able = Strings(can and "ABLE" or "NOT ABLE")
+        local aw = Font.widthSized(able, 10)
+        Font.drawSized(able, 152 - aw, y + 3, 10)
+      else
+        HanNumber.drawRightText(meta, 152, y + 1, 9)
+        local shownHP = mon.hp
+        if self.heal and self.heal.mon == mon then
+          shownHP = math.floor(self.heal.shown)
+        end
+
+        -- Party uses the cartridge HP fill plus the *tiny* $6C nubs only.
+        -- It must never inherit the battle HUD's $6D vertical/arrow chrome.
+        local shown = { hp = shownHP, stats = mon.stats }
+        love.graphics.setColor(1, 1, 1, 1)
+        HudTiles.drawCappedGauge(self.game.data, 80, y + 2, shown,
+          2, barZoned, 4)
+        love.graphics.setColor(0, 0, 0, 1)
+
+        HanNumber.drawRightText(HanNumber.pair(shownHP, mon.stats.hp),
+          152, y + 9, 8)
+      end
+    else
+      Font.draw(name, 24, y)
+      -- level at column 13 (<LV> tile + digits, PrintLevel) AND the
+      -- status/FNT text at column 17 (PrintStatusCondition), like the
+      -- original rows -- statused mons keep their level display
+      if mon.level < 100 then
+        HudTiles.tile(0x6E, 104, y) -- <LV>
+        Font.draw(tostring(mon.level), 112, y)
+      else
+        -- PrintLevel overwrites the <LV> tile with the third digit
+        Font.draw(tostring(mon.level), 104, y)
+      end
+      if self.tmhm then
+        -- TM/HM teaching menu (engine/menus/party_menu.asm PrintPartyMenu):
+        -- the second row shows the inline "ABLE" / "NOT ABLE" learnability
+        -- strings in place of the HP bar and status, decided by CanLearnTM.
+        local can = false
+        for _, m in ipairs(def.tmhm or {}) do
+          if m == self.tmhm.move then can = true break end
+        end
+        if can then
+          Font.draw(Strings("ABLE"), 120, y + 8)
+        else
+          Font.draw(Strings("NOT ABLE"), 88, y + 8)
+        end
+      else
+        if mon.hp <= 0 then
+          Font.draw(Strings("FNT"), 136, y)
+        elseif mon.status then
+          local record = Status.recordFor(self.game.data.statuses, mon.status)
+          Font.draw((record and (record.hudLabel or record.label)) or mon.status,
+                    136, y)
+        end
+        local shown = mon
+        if self.heal and self.heal.mon == mon then
+          shown = { hp = math.floor(self.heal.shown), stats = mon.stats }
+        end
+        love.graphics.setColor(1, 1, 1, 1)
+        HudTiles.drawHPBar(self.game.data, 5, (y + 8) / 8, shown, nil, barZoned)
+        love.graphics.setColor(0, 0, 0, 1)
+        Font.draw(("%3d/%3d"):format(shown.hp, mon.stats.hp), 104, y + 8)
+      end
     end
     -- home/pokemon.asm PartyMenuInit seeds wTopMenuItemY/X with 1/0, so the
     -- cursor sits on the entry's *second* tile row (the level/HP line),
@@ -929,12 +980,28 @@ function PartyMenu:draw()
   end
   if self.submenu then
     local n = #self.subItems
-    Font.drawBox(9, 17 - n * 2 - 1, 11, n * 2 + 1)
-    local y0 = (17 - n * 2) * 8
-    for si, entry in ipairs(self.subItems) do
-      Font.draw(entry.label, 88, y0 + (si - 1) * 16)
+    local large = Font.cellHeight() > 8
+    local labelSize = large and 12 or Font.cellHeight()
+    local widest = 0
+    for _, entry in ipairs(self.subItems) do
+      widest = math.max(widest, Font.widthSized(entry.label, labelSize))
     end
-    Font.drawCode(Theme.cursor, 80, y0 + (self.subIndex - 1) * 16)
+    local tw = math.min(20, math.max(5, math.ceil(widest / 8) + 3))
+    local tx = 20 - tw
+    local th = n * 2 + 2
+    local ty = 18 - th
+    Font.drawBox(tx, ty, tw, th)
+    for si, entry in ipairs(self.subItems) do
+      local rowY = (ty + 1 + (si - 1) * 2) * 8
+      if large then
+        Font.drawSized(entry.label, (tx + 2) * 8, rowY + 3, labelSize)
+      else
+        Font.draw(entry.label, (tx + 2) * 8, rowY)
+      end
+    end
+    local cursorY = (ty + 1 + (self.subIndex - 1) * 2) * 8
+      + (large and 4 or 0)
+    Font.drawCode(Theme.cursor, (tx + 1) * 8, cursorY)
   end
   love.graphics.setColor(1, 1, 1, 1)
 end

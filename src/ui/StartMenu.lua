@@ -5,6 +5,7 @@
 -- opens, so mods insert or remove rows without patching this file.
 
 local Font = require("src.render.Font")
+local HanNumber = require("src.render.HanNumber")
 local Logger = require("src.core.Logger")
 local Menu = require("src.ui.Menu")
 local Renderer = require("src.render.Renderer")
@@ -45,7 +46,7 @@ function StartMenu.new(game)
   end })
 
   -- the player's name opens the trainer card (StartMenu_TrainerInfo)
-  table.insert(items, { label = game.save.player.name or "RED",
+  table.insert(items, { label = Strings(game.save.player.name or "RED"),
     onSelect = function()
       Screens.push(game, "TrainerCard", { onCancel = reopen })
     end })
@@ -60,9 +61,18 @@ function StartMenu.new(game)
       owned = owned + 1
     end
     local t = math.floor(game.save.playTime or 0)
-    local panel = Strings("PLAYER %s\nBADGES    %d\nPOKéDEX %3d\nTIME %6d:%02d",
-                          game.save.player.name or "RED", badges, owned,
-                          math.floor(t / 3600), math.floor(t / 60) % 60)
+    local panel
+    if HanNumber.enabled() then
+      panel = Strings("NAME") .. Strings(game.save.player.name or "RED")
+        .. "\n" .. Strings("BADGES") .. HanNumber.format(badges)
+        .. "\n" .. Strings("POKéDEX") .. HanNumber.format(owned)
+        .. "\n" .. Strings("TIME") .. HanNumber.clock(math.floor(t / 3600),
+          math.floor(t / 60) % 60)
+    else
+      panel = Strings("PLAYER %s\nBADGES    %d\nPOKéDEX %3d\nTIME %6d:%02d",
+        Strings(game.save.player.name or "RED"), badges, owned,
+        math.floor(t / 3600), math.floor(t / 60) % 60)
+    end
     game.stack:push(TextBox.new(game,
       panel .. Strings("\fWould you like to\nSAVE the game?"), nil, {
       choice = function(yes)
@@ -176,10 +186,17 @@ function StartMenu.new(game)
       local safari = game.save.safari
       Font.drawBox(0, 0, 9, 5)
       love.graphics.setColor(0, 0, 0, 1)
-      Font.draw(("%3d"):format(math.floor(safari.steps or 0)), 8, 8)
-      Font.draw("/500", 32, 8)
-      Font.draw(Strings("BALL"), 8, 24)
-      Font.draw(("%2d"):format(math.floor(safari.balls or 0)), 48, 24)
+      if HanNumber.enabled() then
+        HanNumber.drawText(HanNumber.pair(math.floor(safari.steps or 0), 500),
+          8, 10)
+        Font.draw(Strings("BALL"), 8, 24)
+        HanNumber.draw(math.floor(safari.balls or 0), 48, 26)
+      else
+        Font.draw(("%3d"):format(math.floor(safari.steps or 0)), 8, 8)
+        Font.draw("/500", 32, 8)
+        Font.draw(Strings("BALL"), 8, 24)
+        Font.draw(("%2d"):format(math.floor(safari.balls or 0)), 48, 24)
+      end
       love.graphics.setColor(1, 1, 1, 1)
     end
   end

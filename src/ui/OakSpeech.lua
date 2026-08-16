@@ -394,9 +394,17 @@ function OakSpeech:runStep(step)
     local presets = step.presets
       or namePresets(self.game, step.presetsWho or who,
                      step.presetsFallback or { "RED" })
+    -- Preset names are player-facing choices, not internal identifiers.  Run
+    -- them through the string catalogue before handing them to NamingScreen;
+    -- the selected display value is what is written to the save, so a language
+    -- conversion's RED -> 赤 default also becomes the actual OT/player name.
+    local localizedPresets = {}
+    for i, preset in ipairs(presets) do
+      localizedPresets[i] = Strings(preset)
+    end
     require("src.ui.Screens").push(self.game, "NamingScreen", {
-      title = step.title or (who == "rival" and "HIS NAME?" or Strings("YOUR NAME?")),
-      presets = presets,
+      title = step.title or Strings(who == "rival" and "HIS NAME?" or "YOUR NAME?"),
+      presets = localizedPresets,
       maxLen = step.maxLen or self.nameLen,
       onDone = function(name)
         if who == "rival" then

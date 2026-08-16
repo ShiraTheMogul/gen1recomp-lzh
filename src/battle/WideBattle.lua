@@ -12,6 +12,7 @@
 -- prompt/command window, and a 2x2 move menu with an attached PP/type panel.
 
 local Font = require("src.render.Font")
+local HanNumber = require("src.render.HanNumber")
 local HudTiles = require("src.render.HudTiles")
 local PaletteFX = require("src.render.PaletteFX")
 local Runtime = require("src.mods.Runtime")
@@ -85,7 +86,15 @@ end
 
 local function levelAt(battle, battler, x, y)
   if battler.shownStatus then
-    Font.draw(battle:statusLabel({ status = battler.shownStatus }), x, y)
+    local label = battle:statusLabel({ status = battler.shownStatus })
+    if Font.cellHeight() > 8 then
+      Font.drawSized(label, x, y + 2, 12)
+    else
+      Font.draw(label, x, y)
+    end
+  elseif Font.cellHeight() > 8 then
+    HanNumber.drawText(HanNumber.format(battler.mon.level)
+      .. Strings("LEVEL_SUFFIX"), x, y + 3, 10)
   else
     HudTiles.tile(0x6E, x, y) -- '<LV>'
     Font.draw(tostring(battler.mon.level), x + 8, y)
@@ -97,22 +106,55 @@ end
 -- HP is never shown, like the original).
 local function drawStatusPanel(battle, battler, x, y, player)
   local tx, ty = math.floor(x / 8), math.floor(y / 8)
-  local tw, th = player and 15 or 16, player and 5 or 4
+  local tw, th = player and 15 or 16, 5
   Font.drawBox(tx, ty, tw, th)
   love.graphics.setColor(0, 0, 0, 1)
 
   local nameWidth = player and 64 or 80
-  Font.draw(fitName(battler.name, nameWidth), x + 8, y + 8)
+  if Font.cellHeight() > 8 then
+    local name = battler.name or ""
+    local nameSize = Font.widthSized(name, 14) <= nameWidth and 14 or 12
+    Font.drawSized(name, x + 8, y + 11, nameSize)
+  else
+    Font.draw(fitName(battler.name, nameWidth), x + 8, y + 8)
+  end
   levelAt(battle, battler, x + tw * 8 - 40, y + 8)
 
-  HudTiles.drawHPBar(battle.data, tx + 1, ty + 2, {
-    hp = shownHP(battler),
-    stats = battler.mon.stats,
-  }, nil, monoMode(), tw - 5, battler.shownPx)
+  local hanBarX, hanBarSegs
+  if Font.cellHeight() > 8 then
+    -- Wide battle follows the same distinction as the classic HUD: player
+    -- keeps 體 + numeric HP; foe has no redundant 體 label.  Both bars use
+    -- only the tiny Gen-I $6C end nubs, never battle-chrome vertical tiles.
+    if player then Font.drawSized(Strings("HP_SHORT"), x + 8, y + 24, 12) end
+    hanBarSegs = math.max(3, math.floor((tw * 8 - 42) / 8) - 1)
+    hanBarX = player and (x + 24) or (x + 8)
+    HudTiles.drawCappedGauge(battle.data, hanBarX, y + 27, {
+      hp = shownHP(battler), stats = battler.mon.stats,
+    }, player and 1 or 0, monoMode(), hanBarSegs, battler.shownPx)
+  else
+    HudTiles.drawHPBar(battle.data, tx + 1, ty + 2, {
+      hp = shownHP(battler),
+      stats = battler.mon.stats,
+    }, nil, monoMode(), tw - 5, battler.shownPx)
+  end
 
   if player then
-    Font.draw(("%3d/%3d"):format(shownHP(battler), battler.mon.stats.hp),
-      x + tw * 8 - 64, y + 24)
+    if HanNumber.enabled() then
+      local pair = HanNumber.pair(shownHP(battler), battler.mon.stats.hp)
+      local size = 10
+      for _, candidate in ipairs({ 10, 9, 8 }) do
+        if HanNumber.widthText(pair, candidate) <= tw * 8 - 24 then
+          size = candidate
+          break
+        end
+      end
+      local center = hanBarX + (hanBarSegs + 2) * 4
+      local width = HanNumber.widthText(pair, size)
+      HanNumber.drawText(pair, center - width / 2, y + 32, size)
+    else
+      Font.draw(("%3d/%3d"):format(shownHP(battler), battler.mon.stats.hp),
+        x + tw * 8 - 64, y + 24)
+    end
   end
 end
 
@@ -156,13 +198,20 @@ local function drawMessageBox(battle)
   end
   local off = battle.scrollPx or 0
   local ys = { 112, 128 }
+  local g = love.graphics
+  local saved = saveScissor()
+  if g.intersectScissor then g.intersectScissor(8, 104, 288, 40) end
   for li, line in ipairs(battle.shown or {}) do
-    local y = (ys[li] or 128) + off
-    for i = 1, #line do
-      Font.drawCode(line[i], 8 + (i - 1) * 8, y)
+    local y = (ys[li] or 128) + (li == 1 and off or 0)
+    local pen = 8
+    for _, code in ipairs(line) do
+      Font.drawCode(code, pen, y)
+      pen = pen + Font.advanceOf(code)
     end
   end
-  if (battle.msgWaiting or battle.msgPrompt) and battle.frame % 60 < 30 then
+  restoreScissor(saved)
+  if (battle.msgWaiting or battle.msgPageWaiting or battle.msgPrompt)
+     and battle.frame % 60 < 30 then
     Font.drawCode(0xEE, 288, 132)
   end
 end
@@ -174,9 +223,14 @@ local function drawCommandMenu(battle)
     Font.drawBox(0, 13, 38, 5)
     love.graphics.setColor(0, 0, 0, 1)
     Font.draw(Strings("BALLx"), 16, 112)
-    -- wNumSafariBalls immediately after the label, as at hlcoord 7,14
-    -- (engine/battle/core.asm:2074-2079) (#540)
-    Font.draw(("%2d"):format(battle.safari.balls), 56, 112)
+    -- The translated 獲獸毬 label occupies 48px, so the number moves one
+    -- cell right in the 16px layout instead of being painted through it.
+    if HanNumber.enabled() then
+      HanNumber.draw(battle.safari.balls, 72, 114)
+    else
+      Font.draw(("%2d"):format(battle.safari.balls),
+                Font.cellHeight() > 8 and 72 or 56, 112)
+    end
     Font.draw(Strings("BAIT"), 168, 112)
     Font.draw(Strings("THROW ROCK"), 16, 128)
     Font.draw(Strings("RUN"), 168, 128)
@@ -196,19 +250,31 @@ local function drawCommandMenu(battle)
   -- prompt side blank and run the same scripted hand the classic does.
   if battle.demo then
     Font.draw(Strings("FIGHT"), 176, 112)
-    Font.drawCode(0xE1, 240, 112); Font.drawCode(0xE2, 248, 112)
+    if Font.cellHeight() > 8 then
+      Font.draw(Strings("POKéMON"), 240, 112)
+    else
+      Font.drawCode(0xE1, 240, 112); Font.drawCode(0xE2, 248, 112)
+    end
     Font.draw(Strings("ITEM"), 176, 128)
     Font.draw(Strings("RUN"), 240, 128)
     -- next to FIGHT for the first 80 frames, then ITEM
     Font.drawCode(0xED, 168, (battle.demoTimer or 0) <= 80 and 112 or 128)
     return
   end
-  Font.draw(Strings("What will"), 8, 112)
   local who = battle.player and battle.player.name or ""
-  Font.draw(fitName(who, 112) .. Strings(" do?"), 8, 128)
+  if Font.cellHeight() > 8 then
+    Font.draw(fitName(who, 96) .. "何為？", 8, 112)
+  else
+    Font.draw(Strings("What will"), 8, 112)
+    Font.draw(fitName(who, 112) .. Strings(" do?"), 8, 128)
+  end
   Font.draw(Strings("FIGHT"), 176, 112)
-  Font.drawCode(0xE1, 240, 112) -- 'PK'
-  Font.drawCode(0xE2, 248, 112) -- 'MN'
+  if Font.cellHeight() > 8 then
+    Font.draw(Strings("POKéMON"), 240, 112)
+  else
+    Font.drawCode(0xE1, 240, 112) -- 'PK'
+    Font.drawCode(0xE2, 248, 112) -- 'MN'
+  end
   Font.draw(Strings("ITEM"), 176, 128)
   Font.draw(Strings("RUN"), 240, 128)
   Font.drawCode(0xED, col == 0 and 168 or 232, 112 + row * 16)
@@ -221,8 +287,14 @@ local function drawMoveDetails(battle, move)
   if not def then return end
   local maxPP = def.pp + (move.ppUps or 0) * math.floor(def.pp / 5)
   love.graphics.setColor(0, 0, 0, 1)
-  Font.draw(("PP %2d/%2d"):format(move.pp or 0, maxPP), 232, 112)
-  Font.draw(fitName(TypeChart.displayName(def.type), 64), 232, 128)
+  if HanNumber.enabled() then
+    Font.drawSized(Strings("PP"), 232, 115, 12)
+    HanNumber.drawText(HanNumber.pair(move.pp or 0, maxPP), 252, 116, 10)
+    Font.drawSized(TypeChart.displayName(def.type), 232, 131, 12)
+  else
+    Font.draw(Strings("PP") .. ("%2d/%2d"):format(move.pp or 0, maxPP), 232, 112)
+    Font.draw(fitName(TypeChart.displayName(def.type), 64), 232, 128)
+  end
 end
 
 local function drawMoveGrid(battle, moves, selected)
@@ -235,7 +307,13 @@ local function drawMoveGrid(battle, moves, selected)
     local row = math.floor((i - 1) / 2)
     local x, y = col == 0 and 16 or 120, 112 + row * 16
     local def = battle.data.moves[move.id]
-    Font.draw(fitName(def and def.name or move.id or "", 96), x, y)
+    local label = def and def.name or move.id or ""
+    if Font.cellHeight() > 8 then
+      local size = Font.widthSized(label, 14) <= 88 and 14 or 12
+      Font.drawSized(label, x, y + 2, size)
+    else
+      Font.draw(fitName(label, 96), x, y)
+    end
   end
   local col = (selected - 1) % 2
   local row = math.floor((selected - 1) / 2)
@@ -257,7 +335,7 @@ end
 
 local function drawTextArea(battle)
   if not battle:bottomUIVisible() then return end
-  if battle.phase == "messages" and (battle.current or battle.animPlaying) then
+  if battle.phase == "messages" and (battle.current or battle.animPlaying or battle.msgHold) then
     drawMessageBox(battle)
   elseif battle.phase == "menu" then
     drawCommandMenu(battle)

@@ -19,18 +19,38 @@ function Menu.new(game, items, opts)
   self.tx = opts.tx or 10
   self.ty = opts.ty or 0
   self.tw = opts.tw or 10
-  -- grow the box to the widest label so longer (e.g. localized) labels don't
-  -- overflow the frame; nudge tx left to keep the box on-screen (20 tiles).
+  -- Large-font localizations use the same 12px choice-label face as the
+  -- YES/NO box. Choice rows remain 16px apart; only truly over-wide labels
+  -- fall back to 10px.
+  self.largeFont = Font.cellHeight() > 8
+  self.labelSize = opts.labelSize or (self.largeFont and 12 or Font.cellHeight())
+  -- Grow the box from measured pixels, not character count.
   do
-    local widest = 0
-    for _, it in ipairs(items) do
-      if it.label then
-        local n = #Font.split(it.label)
-        if n > widest then widest = n end
+    local function widestAt(size)
+      local widest = 0
+      for _, it in ipairs(items) do
+        if it.label then
+          local w = self.largeFont and Font.widthSized(it.label, size)
+            or Font.width(it.label)
+          if w > widest then widest = w end
+        end
       end
+      return widest
     end
-    local needed = widest + 3
+
+    local maxTw = math.min(20, opts.maxTw or 20)
+    local widestPx = widestAt(self.labelSize)
+    if self.largeFont and not opts.labelSize
+       and math.ceil(widestPx / 8) + 3 > maxTw then
+      self.labelSize = 10
+      widestPx = widestAt(self.labelSize)
+    end
+
+    -- Menu geometry remains tile-based; convert measured pixels back to
+    -- whole tiles and cap the frame at the physical screen width.
+    local needed = math.min(maxTw, math.ceil(widestPx / 8) + 3)
     if needed > self.tw then self.tw = needed end
+    if self.tw > maxTw then self.tw = maxTw end
     if self.tx + self.tw > 20 then self.tx = math.max(0, 20 - self.tw) end
   end
   self.rowStep = opts.rowStep or 2
@@ -42,7 +62,12 @@ function Menu.new(game, items, opts)
   self.scroll = 0
   local visible = (self.maxVisible and math.min(self.maxVisible, #items))
     or #items
-  self.th = opts.th or (visible * self.rowStep + 2)
+  local contentTh = visible * self.rowStep + 2
+  -- Cartridge callers often pass a box height chosen for 8px labels.  In the
+  -- Han UI, size the choice window to its actual rows instead of preserving
+  -- surplus blank space or clipping a 12px label against an old border.
+  self.th = self.largeFont and contentTh or (opts.th or contentTh)
+  if self.ty + self.th > 18 then self.ty = math.max(0, 18 - self.th) end
   self.cancelable = opts.cancelable ~= false
   -- Whether START closes the menu.  In pokered a menu responds only to the
   -- keys in its wMenuWatchedKeys mask; the common PAD_A | PAD_B (and the
@@ -119,26 +144,28 @@ function Menu:draw()
   love.graphics.setColor(0, 0, 0, 1)
   local visible = (self.maxVisible and math.min(self.maxVisible, #self.items))
     or #self.items
-  -- Row Y: pokered's boxed menus anchor the choices to the BOTTOM interior
-  -- row and let any slack fall as a blank row under the top edge --
-  -- draw_start_menu.asm (TextBoxBorder 10,0, then hlcoord 12,2 /
-  -- wTopMenuItemY 2), players_pc.asm and bills_pc.asm all do the same.  The
-  -- bottom border is ty + th - 1, so the last choice sits on ty + th - 2 and
-  -- row r counts back up from there.  Anchoring from the top instead only
-  -- agrees when th is exactly visible * rowStep + 2, which is Menu.new's
-  -- default but NOT what a caller sizing its own box passes: BagMenu's
-  -- USE/TOSS is th = 5 for two choices (#284, matching text_boxes.asm's
-  -- USE_TOSS_MENU_TEMPLATE rows 10..14), and a top anchor pushed TOSS onto
-  -- the bottom border (#564, #572).
+  -- Han choices follow ChoiceBox's geometry: first item one tile below
+  -- the top border, then every two tile rows. The cartridge bottom-anchor
+  -- leaves a spare row above translated choices and makes them float down.
   for row = 1, visible do
     local item = self.items[self.scroll + row]
     if not item then break end
-    Font.draw(item.label, (self.tx + 2) * 8,
-      (self.ty + self.th - 2 - (visible - row) * self.rowStep) * 8)
+    if self.largeFont then
+      local y = (self.ty + 1 + (row - 1) * self.rowStep) * 8
+      Font.drawSized(item.label, (self.tx + 2) * 8, y + 3, self.labelSize)
+    else
+      local y = (self.ty + self.th - 2 - (visible - row) * self.rowStep) * 8
+      Font.draw(item.label, (self.tx + 2) * 8, y)
+    end
   end
   local cursorRow = self.index - self.scroll
-  Font.drawCode(Theme.cursor, (self.tx + 1) * 8,
-    (self.ty + self.th - 2 - (visible - cursorRow) * self.rowStep) * 8)
+  local cursorY
+  if self.largeFont then
+    cursorY = (self.ty + 1 + (cursorRow - 1) * self.rowStep) * 8 + 4
+  else
+    cursorY = (self.ty + self.th - 2 - (visible - cursorRow) * self.rowStep) * 8
+  end
+  Font.drawCode(Theme.cursor, (self.tx + 1) * 8, cursorY)
   -- moreArrow ($EE): the same "more below" glyph OptionRows/ManagerState
   -- use, sat on the bottom border like TextBox's page-advance cursor.  It
   -- has to be the border row, not ty + th - 2: that is the last interior

@@ -16,6 +16,8 @@ local Damage = require("src.battle.Damage")
 local EffectRegistry = require("src.battle.EffectRegistry")
 local Experience = require("src.battle.Experience")
 local Font = require("src.render.Font")
+local HanNumber = require("src.render.HanNumber")
+local TextBox = require("src.render.TextBox")
 local Logger = require("src.core.Logger")
 local MoveEffects = require("src.battle.MoveEffects")
 local Party = require("src.pokemon.Party")
@@ -490,8 +492,13 @@ function StatBox:draw()
                  { Strings("速"), s.speed },
                  { Strings("異能"), s.special } }
   for i, r in ipairs(rows) do
-    Font.draw(Strings(r[1]), 88, 24 + (i - 1) * 16)
-    Font.draw(("%3d"):format(r[2]), 128, 32 + (i - 1) * 16)
+    local y = 24 + (i - 1) * 16
+    if HanNumber.enabled() then
+      Font.drawSized(Strings(r[1]), 88, y + 3, 12)
+      HanNumber.drawRight(r[2], 148, y + 4, 10)
+    else
+      Font.draw(("%3d"):format(r[2]), 128, 32 + (i - 1) * 16)
+    end
   end
   love.graphics.setColor(1, 1, 1, 1)
 end
@@ -1147,37 +1154,52 @@ local function shownHP(b)
   return math.floor(shown)
 end
 
--- Parse a battle message into its rendered lines.  The extractor marks
--- \n = next line and \v = CONT (home/text.asm ContText: draw the blinking
--- ▼, WaitForTextScrollButtonPress, then ScrollTextUpOneLine); the boosted /
--- EXP.ALL exp lines end in the CONT code in the ROM (data/generated/text.lua
--- _BoostedText/_WithExpAllText = "...\011").  Each entry is { codes, cont },
--- cont true when the line was preceded by \v.  Splitting before Font.encode
--- keeps the control chars out of the glyph stream.  The box then types into
--- a rolling 2-line window (self.shown) that scrolls when a 3rd line arrives
--- instead of drawing it off-screen at y=144 (#216).
+-- Battle prose is laid out through the same pixel-budget paginator as
+-- overworld dialogue.  The ROM text still contains English-authored \n line
+-- breaks; once a translation contains a TTF/CJK glyph those are presentation
+-- artefacts, not grammar, so discard plain \n and let the 144px viewport reflow it.
+-- Explicit CONT (\v) and page (\f) controls remain semantic overrides.
+local function battleUsesTTFText(text)
+  for _, span in ipairs(Font.split(text or "")) do
+    if span.code and span.code >= Font.TTF_BASE then return true end
+  end
+  return false
+end
+
 function BattleState:startMessage(item)
   self.current = item
   self.lines = {}
   self.total = 0
   local text = item.text or ""
-  local pos, cont = 1, false
-  while true do
-    local npos = text:find("[\n\v]", pos)
-    local chunk = npos and text:sub(pos, npos - 1) or text:sub(pos)
-    local codes = Font.encode(chunk)
-    self.lines[#self.lines + 1] = { codes = codes, cont = cont }
-    self.total = self.total + #codes
-    if not npos then break end
-    cont = text:sub(npos, npos) == "\v"
-    pos = npos + 1
+  local eastAsian = battleUsesTTFText(text)
+  if eastAsian then text = text:gsub("\n", "") end
+
+  local pages = TextBox.paginate(text, 18, {
+    -- An auto battle row (for example "used X") must not acquire a new
+    -- button wait merely because localization made it wrap.  Prompted prose
+    -- gets normal automatic two-line pages.
+    autoPages = eastAsian and not item.auto,
+  })
+  for pageIndex, page in ipairs(pages) do
+    local conts = pages.contBefore and pages.contBefore[pageIndex] or {}
+    for lineIndex, line in ipairs(page) do
+      local codes = Font.encode(line)
+      self.lines[#self.lines + 1] = {
+        codes = codes,
+        cont = conts[lineIndex] == true,
+        page = pageIndex > 1 and lineIndex == 1,
+      }
+      self.total = self.total + #codes
+    end
   end
+
   self.shown = {}        -- up to two visible lines of revealed glyph codes
   self.lineIndex = 0
   -- self.charIndex counts glyphs typed across the WHOLE message (drivers read
   -- it against self.total); the current line's revealed count is #shown[last]
   self.charIndex = 0
   self.msgWaiting = nil
+  self.msgPageWaiting = nil
   self.msgPrompt = nil
   self.msgAutoWait = nil
   self.msgHold = nil
@@ -1194,7 +1216,10 @@ function BattleState:beginMsgLine()
   self.codes = ln and ln.codes or {}
   if #self.shown >= 2 then
     table.remove(self.shown, 1)
-    self.scrollPx = 8
+    -- The battle box baselines are 16px apart.  An 8px tile font keeps the
+    -- cartridge-like half-row animation; a 16px CJK cell must move a full
+    -- row or the old and new glyphs occupy one another.
+    self.scrollPx = Font.cellHeight() > 8 and 16 or 8
   end
   self.shown[#self.shown + 1] = {}
 end
@@ -1372,6 +1397,23 @@ function BattleState:updateQueue()
     self:startMessage(item)
   end
   local input = self.game.input
+  -- Automatic/explicit page boundary: unlike CONT, clear the two visible
+  -- rows before beginning the next page.
+  if self.msgPageWaiting then
+    if (self.msgPreWait or 0) > 0 then
+      self.msgPreWait = self.msgPreWait - 1
+      return true
+    end
+    if input:wasPressed("a") or input:wasPressed("b") then
+      self.msgPageWaiting = nil
+      self.shown = {}
+      self.scrollPx = nil
+      self:beginMsgLine()
+      self.waitFrames = Timing.TEXT_PAGE_CLEAR
+    end
+    return true
+  end
+
   -- a \v CONT wait holds the box until A/B, then scrolls the next line in
   -- (home/text.asm ContText); this keeps a 3rd line on-screen (#216)
   if self.msgWaiting then
@@ -1411,9 +1453,13 @@ function BattleState:updateQueue()
       self.charIndex = self.charIndex + 1
     end
   elseif self.lineIndex < #self.lines then
-    -- current line finished, more lines remain: \v waits for A/B + ▼ before
-    -- scrolling, \n advances now (beginMsgLine scrolls if the box is full)
-    if self.lines[self.lineIndex + 1].cont then
+    -- Current line finished.  A paginator page boundary waits and clears;
+    -- CONT waits and scrolls; an ordinary wrapped/explicit line advances.
+    local nextLine = self.lines[self.lineIndex + 1]
+    if nextLine.page then
+      self.msgPageWaiting = true
+      self.msgPreWait = Timing.TEXT_PRE_ADVANCE
+    elseif nextLine.cont then
       self.msgWaiting = true
       self.msgPreWait = Timing.TEXT_PRE_ADVANCE
     else
@@ -3984,7 +4030,8 @@ function BattleState:awardExp()
       elseif traded then
         text = Strings.source("%s gained\na boosted\v%d EXP. Points!")
       end
-      self:sayNext(Strings(text, name, gained))
+      local amount = HanNumber.enabled() and HanNumber.format(gained) or gained
+      self:sayNext(Strings(text, name, amount))
     end
     -- per level: GrewLevelText -> the stats window (PrintStatsBox) ->
     -- the move-learn checks (experience.asm:245-256)
@@ -3995,7 +4042,8 @@ function BattleState:awardExp()
         .modifyHappiness(game.save, "LEVELUP", mon)
       -- GrewLevelText: text_far, sound_level_up, text_end (experience.asm:
       -- 369-372); PrintStatsBox only runs once PrintText has returned
-      self:sayNextWaitSfx(Strings("%s grew\nto level %d!", name, lv),
+      local shownLevel = HanNumber.enabled() and HanNumber.format(lv) or lv
+      self:sayNextWaitSfx(Strings("%s grew\nto level %d!", name, shownLevel),
         function() return require("src.core.Sound").play(game.data, "Level_Up") end)
       self:uiNext(function()
         return StatBox.new(game, mon)
@@ -4232,7 +4280,13 @@ function BattleState:enemyMonFainted()
         end
       end
     end
-    self:sayNext(self:romText("_MoneyForWinningText", "%s got ¥%d\nfor winning!", self.game.save.player.name, prize))
+    if HanNumber.enabled() then
+      self:sayNext(self:romText("_MoneyForWinningText", "%s獲金%s！",
+        self.game.save.player.name, HanNumber.format(prize)))
+    else
+      self:sayNext(self:romText("_MoneyForWinningText", "%s got ¥%d\nfor winning!",
+        self.game.save.player.name, prize))
+    end
   end
   self.result = "win"
   self.afterQueue = "finish"
@@ -4927,6 +4981,7 @@ end
 local HudTiles = require("src.render.HudTiles")
 local hudTile = HudTiles.tile
 local drawHPBar = HudTiles.drawHPBar
+local drawGauge = HudTiles.drawGauge
 
 -- CenterMonName: 1-2 letter names print two tiles right, 3-4 one tile.
 -- Counted in glyphs, not bytes: a nickname carrying "é" or "♂" is one
@@ -5651,6 +5706,33 @@ function BattleState:drawPicsLayer(slide, sx, sy, onlySide, skipMenuClip)
   end
 end
 
+-- Fit a large translated battler name and compact level/status into one
+-- HUD row.  Short names keep the full 16px face; longer names step down only
+-- as far as needed so the telemetry never paints through the name.
+local function drawHanHudName(name, meta, left, right, y)
+  local metaSize = 10
+  local metaW = HanNumber.widthText(meta, metaSize)
+  local gap = 3
+  local room = math.max(10, right - left - metaW - gap)
+  local chosen = 10
+  -- Battle HUDs are information-dense.  The 16px prose face is excellent in
+  -- dialogue but its ink rises out of the cartridge's 16px HUD band; start
+  -- at 14px here and shrink only when a long species name requires it.
+  for _, size in ipairs({ 14, 12, 10 }) do
+    if Font.widthSized(name, size) <= room then
+      chosen = size
+      break
+    end
+  end
+  if chosen == Font.cellHeight() then
+    Font.draw(name, left, y)
+  else
+    Font.drawSized(name, left, y + math.floor((16 - chosen) / 2), chosen)
+  end
+  HanNumber.drawRightText(meta, right, y + 3, metaSize)
+  return Font.widthSized(name, chosen)
+end
+
 -- the BG-tile UI: HUDs, pokeball rows, safari ball count.  Grayscale;
 -- the zone pass colors it in colorized mode.
 function BattleState:drawHUDs(slide)
@@ -5684,25 +5766,55 @@ function BattleState:drawHUDs(slide)
       love.graphics.translate(hudShake, 0)
     end
     love.graphics.setColor(0, 0, 0, 1)
-    local enemyNameX = nameX(1, self.enemy.name)
-    local enemyNameWidth = Font.draw(self.enemy.name, enemyNameX, 0)
-    if self:caughtMarkerVisible() then
-      self:drawCaughtBall(enemyNameX + enemyNameWidth, 0)
-      love.graphics.setColor(0, 0, 0, 1)
-    end
-    if self.enemy.shownStatus then
-      Font.draw(self:statusLabel({ status = self.enemy.shownStatus }), 40, 8)
+    if Font.cellHeight() > 8 then
+      -- Large Han names keep the 16px prose face; dense telemetry uses the
+      -- compact numeral face.  Name + level/status share one band, leaving
+      -- a second band for 體 and the gauge instead of stacking three 16px
+      -- rows into the cartridge's 32px enemy HUD.
+      local enemyNameX = 8
+      local meta = self.enemy.shownStatus
+        and self:statusLabel({ status = self.enemy.shownStatus })
+        or (HanNumber.format(self.enemy.mon.level) .. Strings("LEVEL_SUFFIX"))
+      local enemyNameWidth = drawHanHudName(self.enemy.name, meta, enemyNameX, 88, 4)
+      if self:caughtMarkerVisible() then
+        local markerX = math.min(enemyNameX + enemyNameWidth, 56)
+        self:drawCaughtBall(markerX, 0)
+        love.graphics.setColor(0, 0, 0, 1)
+      end
+      -- Restore the cartridge HUD chrome behind the Han label.  The vertical
+      -- stroke and stepped underline are allowed to pass behind 體; that is
+      -- preferable to deleting the characteristic Gen-I arrow geometry.
+      hudTile(0x73, 8, 16)
+      -- Enemy HP keeps the original stepped/arrow HUD chrome.  There is no
+      -- numeric HP competing for space, so no Han 體 label is needed here.
+      -- The meter itself gets only the tiny $6C nubs at both ends.
+      HudTiles.drawCappedGauge(barData, 16, 16,
+        { hp = shownHP(self.enemy), stats = self.enemy.mon.stats },
+        0, grayFill, 6, self.enemy.shownPx)
+      hudTile(0x74, 8, 24)
+      for i = 2, 8 do hudTile(0x76, i * 8, 24) end
+      hudTile(0x78, 72, 24)
     else
-      hudTile(0x6E, 32, 8) -- <LV>
-      Font.draw(tostring(self.enemy.mon.level), 40, 8)
+      local enemyNameX = nameX(1, self.enemy.name)
+      local enemyNameWidth = Font.draw(self.enemy.name, enemyNameX, 0)
+      if self:caughtMarkerVisible() then
+        self:drawCaughtBall(enemyNameX + enemyNameWidth, 0)
+        love.graphics.setColor(0, 0, 0, 1)
+      end
+      if self.enemy.shownStatus then
+        Font.draw(self:statusLabel({ status = self.enemy.shownStatus }), 40, 8)
+      else
+        hudTile(0x6E, 32, 8) -- <LV>
+        Font.draw(tostring(self.enemy.mon.level), 40, 8)
+      end
+      hudTile(0x73, 8, 16)
+      drawHPBar(barData, 2, 2,
+                { hp = shownHP(self.enemy), stats = self.enemy.mon.stats },
+                nil, grayFill, nil, self.enemy.shownPx)
+      hudTile(0x74, 8, 24)
+      for i = 2, 9 do hudTile(0x76, i * 8, 24) end
+      hudTile(0x78, 80, 24)
     end
-    hudTile(0x73, 8, 16)
-    drawHPBar(barData, 2, 2,
-              { hp = shownHP(self.enemy), stats = self.enemy.mon.stats },
-              nil, grayFill, nil, self.enemy.shownPx)
-    hudTile(0x74, 8, 24)
-    for i = 2, 9 do hudTile(0x76, i * 8, 24) end
-    hudTile(0x78, 80, 24)
     if hudShake ~= 0 then
       love.graphics.pop()
     end
@@ -5771,21 +5883,53 @@ function BattleState:drawHUDs(slide)
     -- (14,8), HP bar (10,9), HP numbers row 10, underline row 11 with
     -- the tick at (18,10) and the triangle at (9,11)
     love.graphics.setColor(0, 0, 0, 1)
-    Font.draw(self.player.name, nameX(10, self.player.name), 56)
-    if self.player.shownStatus then
-      Font.draw(self:statusLabel({ status = self.player.shownStatus }), 120, 64)
+    if Font.cellHeight() > 8 then
+      -- Same two-band composition as the enemy HUD, plus a compact HP pair
+      -- in the otherwise unused strip above the battle textbox.
+      local meta = self.player.shownStatus
+        and self:statusLabel({ status = self.player.shownStatus })
+        or (HanNumber.format(self.player.mon.level) .. Strings("LEVEL_SUFFIX"))
+      drawHanHudName(self.player.name, meta, 80, 148, 56)
+      Font.drawSized(Strings("HP_SHORT"), 80, 69, 14)
+      -- Player HP has the numeric ratio beneath it, so omit the battle
+      -- arrow/end-cap chrome and keep the original segment artwork itself.
+      -- Centre the entire Classical-Chinese fraction under the bar; as HP
+      -- values gain digits it expands equally left and right.
+      -- Extend the player's meter four pixels left and four pixels right so
+      -- its right edge lands on the same x-axis as the level/status metadata
+      -- above.  The centre stays fixed, which keeps the Han HP fraction
+      -- centred while giving 百-level HP values more horizontal room.
+      local playerBarX, playerBarSegments = 84, 6
+      HudTiles.drawCappedGauge(barData, playerBarX, 72,
+        { hp = shownHP(self.player), stats = self.player.mon.stats },
+        1, grayFill, playerBarSegments, self.player.shownPx)
+      local hpPair = HanNumber.pair(shownHP(self.player), self.player.mon.stats.hp)
+      -- Centre the *whole* denominator-之-numerator expression beneath the
+      -- complete capped meter, so larger HP values expand left and right.
+      local hpCenter = playerBarX + (playerBarSegments + 2) * 4
+      local hpSize = 10
+      for _, size in ipairs({ 10, 9, 8 }) do
+        if HanNumber.widthText(hpPair, size) <= 72 then hpSize = size break end
+      end
+      local hpWidth = HanNumber.widthText(hpPair, hpSize)
+      HanNumber.drawText(hpPair, hpCenter - hpWidth / 2, 84, hpSize)
     else
-      hudTile(0x6E, 112, 64) -- <LV>
-      Font.draw(tostring(self.player.mon.level), 120, 64)
+      Font.draw(self.player.name, nameX(10, self.player.name), 56)
+      if self.player.shownStatus then
+        Font.draw(self:statusLabel({ status = self.player.shownStatus }), 120, 64)
+      else
+        hudTile(0x6E, 112, 64) -- <LV>
+        Font.draw(tostring(self.player.mon.level), 120, 64)
+      end
+      drawHPBar(barData, 10, 9,
+                { hp = shownHP(self.player), stats = self.player.mon.stats },
+                1, grayFill, nil, self.player.shownPx) -- wHPBarType 1: the $6D cap
+      Font.draw(("%3d/%3d"):format(shownHP(self.player), self.player.mon.stats.hp), 88, 80)
+      hudTile(0x73, 144, 80)
+      hudTile(0x77, 144, 88)
+      for i = 10, 17 do hudTile(0x76, i * 8, 88) end
+      hudTile(0x6F, 72, 88)
     end
-    drawHPBar(barData, 10, 9,
-              { hp = shownHP(self.player), stats = self.player.mon.stats },
-              1, grayFill, nil, self.player.shownPx) -- wHPBarType 1: the $6D cap
-    Font.draw(("%3d/%3d"):format(shownHP(self.player), self.player.mon.stats.hp), 88, 80)
-    hudTile(0x73, 144, 80)
-    hudTile(0x77, 144, 88)
-    for i = 10, 17 do hudTile(0x76, i * 8, 88) end
-    hudTile(0x6F, 72, 88)
   end
 end
 
@@ -5808,16 +5952,33 @@ function BattleState:drawTextArea()
     end
     local off = self.scrollPx or 0
     local ys = { 112, 128 }
+
+    -- Battle text used to be a second, 8px-only renderer: every CJK glyph
+    -- was placed eight pixels after the previous one even though Font.width
+    -- and TextBox paginate measured a 16px advance.  Clip and advance the pen
+    -- exactly as TextBox does so battle and overworld prose have one geometry.
+    local g = love.graphics
+    local canClip = g.getScissor and g.setScissor and g.intersectScissor
+    local sx, sy, sw, sh
+    if canClip then
+      sx, sy, sw, sh = g.getScissor()
+      g.intersectScissor(8, 96, 144, 48)
+    end
     for li, line in ipairs(self.shown or {}) do
-      local y = (ys[li] or 128) + off
-      for i = 1, #line do
-        Font.drawCode(line[i], 8 + (i - 1) * 8, y)
+      local y = (ys[li] or 128) + (li == 1 and off or 0)
+      local pen = 8
+      for _, code in ipairs(line) do
+        Font.drawCode(code, pen, y)
+        pen = pen + Font.advanceOf(code)
       end
     end
-    -- the blinking down arrow ('▼', glyph $EE) while a \v CONT wait
-    -- (_ContText) or a typed-out page (PromptText) holds the box; both write
-    -- it at (18,16), bottom-right, like TextBox / home/text.asm (#317)
-    if (self.msgWaiting or self.msgPrompt) and self.frame % 60 < 30 then
+    if canClip then
+      if sx ~= nil then g.setScissor(sx, sy, sw, sh) else g.setScissor() end
+    end
+
+    -- the blinking down arrow ('▼', glyph $EE) while a CONT/page/prompt wait
+    if (self.msgWaiting or self.msgPageWaiting or self.msgPrompt)
+       and self.frame % 60 < 30 then
       Font.drawCode(0xEE, (0 + 20 - 2) * 8, (12 + 6 - 1) * 8 - 4)
     end
   elseif self.phase == "menu" and self.demo then
@@ -5826,10 +5987,18 @@ function BattleState:drawTextArea()
     -- -- next to FIGHT (9,14) for the first 80 frames, then ITEM (9,16)
     Font.drawBox(8, 12, 12, 6)
     love.graphics.setColor(0, 0, 0, 1)
-    Font.draw(Strings("FIGHT", "battle"), 80, 112)
-    Font.drawCode(0xE1, 128, 112); Font.drawCode(0xE2, 136, 112)
-    Font.draw(Strings("ITEM", "battle"), 80, 128); Font.draw(Strings("RUN", "battle"), 128, 128)
-    Font.drawCode(0xED, 72, (self.demoTimer or 0) <= 80 and 112 or 128)
+    if Font.cellHeight() > 8 then
+      Font.draw(Strings("FIGHT", "battle"), 80, 112)
+      Font.draw(Strings("POKéMON"), 120, 112)
+      Font.draw(Strings("ITEM", "battle"), 80, 128)
+      Font.draw(Strings("RUN", "battle"), 120, 128)
+      Font.drawCode(0xED, 72, (self.demoTimer or 0) <= 80 and 112 or 128)
+    else
+      Font.draw(Strings("FIGHT", "battle"), 80, 112)
+      Font.drawCode(0xE1, 128, 112); Font.drawCode(0xE2, 136, 112)
+      Font.draw(Strings("ITEM", "battle"), 80, 128); Font.draw(Strings("RUN", "battle"), 128, 128)
+      Font.drawCode(0xED, 72, (self.demoTimer or 0) <= 80 and 112 or 128)
+    end
   elseif self.phase == "menu" then
     local col = (self.menuIndex - 1) % 2
     local row = math.floor((self.menuIndex - 1) / 2)
@@ -5837,86 +6006,134 @@ function BattleState:drawTextArea()
       -- SAFARI_BATTLE_MENU_TEMPLATE: full-width box, "BALLx  BAIT /
       -- THROW ROCK  RUN" from (2,14)
       Font.drawBox(0, 12, 20, 6)
-      Font.draw(Strings("BALLx"), 16, 112); Font.draw(Strings("BAIT"), 112, 112)
-      Font.draw(Strings("THROW ROCK"), 16, 128); Font.draw(Strings("RUN", "battle"), 112, 128)
-      -- DisplayBattleMenu .safariLeftColumn / .safariRightColumn print
-      -- wNumSafariBalls at hlcoord 7,14 with `lb bc, 1, 2` -- one byte, two
-      -- digits, space padded -- right after the "BALLx" label at columns
-      -- 2..6 (engine/battle/core.asm:2074-2079, 2107-2112) (#540)
-      Font.draw(("%2d"):format(self.safari.balls), 56, 112)
+      if Font.cellHeight() > 8 then
+        Font.draw(Strings("BALLx"), 16, 112)
+        HanNumber.draw(self.safari.balls, 72, 114)
+        Font.draw(Strings("BAIT"), 112, 112)
+        Font.draw(Strings("THROW ROCK"), 16, 128)
+        Font.draw(Strings("RUN", "battle"), 112, 128)
+      else
+        Font.draw(Strings("BALLx"), 16, 112); Font.draw(Strings("BAIT"), 112, 112)
+        Font.draw(Strings("THROW ROCK"), 16, 128); Font.draw(Strings("RUN", "battle"), 112, 128)
+        -- DisplayBattleMenu .safariLeftColumn / .safariRightColumn print
+        -- wNumSafariBalls at hlcoord 7,14 with `lb bc, 1, 2`.
+        Font.draw(("%2d"):format(self.safari.balls), 56, 112)
+      end
       Font.drawCode(0xED, (col == 0 and 8 or 104), 112 + row * 16)
     else
       -- BATTLE_MENU_TEMPLATE: box (8,12)-(19,17), "FIGHT <PK><MN> /
       -- ITEM  RUN" from (10,14); cursor columns 9 / 15
       Font.drawBox(8, 12, 12, 6)
-      Font.draw(Strings("FIGHT", "battle"), 80, 112)
-      Font.drawCode(0xE1, 128, 112); Font.drawCode(0xE2, 136, 112)
-      Font.draw(Strings("ITEM", "battle"), 80, 128); Font.draw(Strings("RUN", "battle"), 128, 128)
-      Font.drawCode(0xED, (col == 0 and 72 or 120), 112 + row * 16)
+      if Font.cellHeight() > 8 then
+        Font.draw(Strings("FIGHT", "battle"), 80, 112)
+        Font.draw(Strings("POKéMON"), 120, 112)
+        Font.draw(Strings("ITEM", "battle"), 80, 128)
+        Font.draw(Strings("RUN", "battle"), 120, 128)
+        Font.drawCode(0xED, (col == 0 and 72 or 112), 112 + row * 16)
+      else
+        Font.draw(Strings("FIGHT", "battle"), 80, 112)
+        Font.drawCode(0xE1, 128, 112); Font.drawCode(0xE2, 136, 112)
+        Font.draw(Strings("ITEM", "battle"), 80, 128); Font.draw(Strings("RUN", "battle"), 128, 128)
+        Font.drawCode(0xED, (col == 0 and 72 or 120), 112 + row * 16)
+      end
     end
   elseif self.phase == "moveSelect" then
-    -- pokered MoveSelectionMenu: move list in a box at (4,12) 16x6,
-    -- names at column 6 from row 13, cursor at column 5.  PrintMenuItem:
-    -- the TYPE/PP box at (0,8) 11x5, with "TYPE/" at (1,9), the type at
-    -- (2,10) and "PP cur/max" at (5,11); its bottom border merges into
-    -- the move box's top border ('─' at (4,12), '┘' at (10,12)).
-    Font.drawBox(0, 8, 11, 5)
-    Font.drawBox(4, 12, 16, 6)
-    -- Those two cells are REPLACED on hardware: MoveSelectionMenu writes them
-    -- straight into the tilemap over the border it just laid down
-    -- (core.asm:2492-2501), and PrintMenuItem's own TextBoxBorder then redraws
-    -- the whole row on top (core.asm:2838-2844).  Font.drawCode blits a
-    -- black-on-transparent glyph instead, so the tile underneath survives: the
-    -- move box's '┌' keeps its Poké Ball corner showing through the '─', and
-    -- the '─' the move box drew at (10,12) pokes two dots out from under the
-    -- '┘' (#240).  Wipe each cell back to box white first, the way a tilemap
-    -- write does.
-    love.graphics.setColor(1, 1, 1, 1)
-    love.graphics.rectangle("fill", 32, 96, 8, 8)
-    love.graphics.rectangle("fill", 80, 96, 8, 8)
-    Font.drawCode(Font.BORDER.h, 32, 96)
-    Font.drawCode(Font.BORDER.br, 80, 96)
-    love.graphics.setColor(0, 0, 0, 1)
-    for i, mv in ipairs(self.player.curMoves) do
-      -- unknown ids (mod-injected moves) print raw instead of crashing
-      local def = self.data.moves[mv.id]
-      Font.draw(def and def.name or tostring(mv.id), 48, 96 + i * 8)
-    end
-    -- Swap cursor: SelectMenuItem parks the hollow arrow on the marked row
-    -- (core.asm:2600-2607), then HandleMenuInput's PlaceMenuCursor writes the
-    -- filled arrow into the tilemap over it whenever the cursor sits there
-    -- (home/window.asm:184-185), so the current row is always filled.  Only
-    -- one glyph may land per cell -- drawCode blits black-on-transparent, so
-    -- stacking 0xED over 0xEC would merge the two arrows (#814).
-    Font.drawCode(0xED, 40, 96 + self.moveIndex * 8)
-    if self.moveSwapIndex and self.moveSwapIndex ~= self.moveIndex then
-      Font.drawCode(0xEC, 40, 96 + self.moveSwapIndex * 8)
-    end
-    local sel = self.player.curMoves[self.moveIndex]
-    if sel then
-      local def = self.data.moves[sel.id]
-      if self.player.disabledSlot == self.moveIndex then
-        Font.draw(Strings("disabled!"), 8, 80)
-      elseif def then
-        Font.draw(Strings("TYPE/"), 8, 72)
-        -- the type record's display name (a mod type shows its name, and
-        -- PSYCHIC_TYPE prints PSYCHIC like the original)
-        Font.draw(def.type and TypeChart.displayName(def.type) or "", 16, 80)
-        local maxPP = def.pp + (sel.ppUps or 0) * math.floor(def.pp / 5)
-        Font.draw(("%2d/%2d"):format(sel.pp, maxPP), 40, 88)
+    if Font.cellHeight() > 8 then
+      -- The cartridge's move list is four 8px rows.  16px Han needs a
+      -- genuine 16px grid, so use the whole lower half: details on the
+      -- left and four move rows on the right.  Vanilla/tile-font layout
+      -- stays untouched in the branch below.
+      Font.drawBox(0, 8, 20, 10)
+      love.graphics.setColor(0, 0, 0, 1)
+      local moveX, cursorX, y0 = 72, 64, 72
+      for i, mv in ipairs(self.player.curMoves) do
+        local def = self.data.moves[mv.id]
+        Font.drawSized(def and def.name or tostring(mv.id),
+          moveX, y0 + (i - 1) * 16 + 3, 12)
+      end
+      Font.drawCode(0xED, cursorX, y0 + (self.moveIndex - 1) * 16 + 4)
+      if self.moveSwapIndex and self.moveSwapIndex ~= self.moveIndex then
+        Font.drawCode(0xEC, cursorX, y0 + (self.moveSwapIndex - 1) * 16 + 4)
+      end
+      local sel = self.player.curMoves[self.moveIndex]
+      if sel then
+        local def = self.data.moves[sel.id]
+        if self.player.disabledSlot == self.moveIndex then
+          Font.drawSized(Strings("disabled!"), 8, 84, 10)
+        elseif def then
+          -- One compact row for the type, then one for PP.  Keeping the
+          -- label/value on the same baseline prevents the 16px type glyph
+          -- from climbing into the move list.
+          -- 16px Wenjin is baseline-anchored to the old 8px tile font, so
+          -- this lexical row needs to sit lower than 10px telemetry.  Put it
+          -- immediately above PP instead of raising/shrinking 屬.
+          Font.drawSized(Strings("TYPE/"), 8, 93, 16)
+          Font.drawSized(def.type and TypeChart.displayName(def.type) or "",
+            28, 93, 16)
+          Font.drawSized(Strings("PP"), 8, 112, 10)
+          local maxPP = def.pp + (sel.ppUps or 0) * math.floor(def.pp / 5)
+          -- Keep the fraction on its own baseline.  At y=117 the Wenjin
+          -- numeral ink rises into 技力; y=128 leaves a clean row beneath it.
+          HanNumber.drawText(HanNumber.pair(sel.pp, maxPP), 8, 128, 10)
+        end
+      end
+    else
+      -- pokered MoveSelectionMenu: move list in a box at (4,12) 16x6,
+      -- names at column 6 from row 13, cursor at column 5.  PrintMenuItem:
+      -- the TYPE/PP box at (0,8) 11x5, with "TYPE/" at (1,9), the type at
+      -- (2,10) and "PP cur/max" at (5,11); its bottom border merges into
+      -- the move box's top border ('─' at (4,12), '┘' at (10,12)).
+      Font.drawBox(0, 8, 11, 5)
+      Font.drawBox(4, 12, 16, 6)
+      love.graphics.setColor(1, 1, 1, 1)
+      love.graphics.rectangle("fill", 32, 96, 8, 8)
+      love.graphics.rectangle("fill", 80, 96, 8, 8)
+      Font.drawCode(Font.BORDER.h, 32, 96)
+      Font.drawCode(Font.BORDER.br, 80, 96)
+      love.graphics.setColor(0, 0, 0, 1)
+      for i, mv in ipairs(self.player.curMoves) do
+        local def = self.data.moves[mv.id]
+        Font.draw(def and def.name or tostring(mv.id), 48, 96 + i * 8)
+      end
+      Font.drawCode(0xED, 40, 96 + self.moveIndex * 8)
+      if self.moveSwapIndex and self.moveSwapIndex ~= self.moveIndex then
+        Font.drawCode(0xEC, 40, 96 + self.moveSwapIndex * 8)
+      end
+      local sel = self.player.curMoves[self.moveIndex]
+      if sel then
+        local def = self.data.moves[sel.id]
+        if self.player.disabledSlot == self.moveIndex then
+          Font.draw(Strings("disabled!"), 8, 80)
+        elseif def then
+          Font.draw(Strings("TYPE/"), 8, 72)
+          Font.draw(def.type and TypeChart.displayName(def.type) or "", 16, 80)
+          local maxPP = def.pp + (sel.ppUps or 0) * math.floor(def.pp / 5)
+          Font.draw(("%2d/%2d"):format(sel.pp, maxPP), 40, 88)
+        end
       end
     end
   elseif self.phase == "mimicSelect" then
-    -- Mimic's copy menu (MoveSelectionMenu .mimicmenu, core.asm:
-    -- 2506-2517): the enemy's move list in a 16x6 box at (0,7), names
-    -- single-spaced from (2,8), cursor at column 1
-    Font.drawBox(0, 7, 16, 6)
-    love.graphics.setColor(0, 0, 0, 1)
-    for i, m in ipairs(self.mimicMoves) do
-      Font.draw(self.data.moves[m.id].name, 16, (7 + i) * 8)
+    if Font.cellHeight() > 8 then
+      Font.drawBox(0, 5, 20, 13)
+      love.graphics.setColor(0, 0, 0, 1)
+      local y0 = 48
+      for i, m in ipairs(self.mimicMoves) do
+        Font.draw(self.data.moves[m.id].name, 24, y0 + (i - 1) * 16)
+      end
+      Font.drawCode(0xED, 8, y0 + (self.mimicIndex - 1) * 16)
+      Font.draw(Strings("WHICH TECHNIQUE?"), 8, 120)
+    else
+      -- Mimic's copy menu (MoveSelectionMenu .mimicmenu, core.asm:
+      -- 2506-2517): the enemy's move list in a 16x6 box at (0,7), names
+      -- single-spaced from (2,8), cursor at column 1
+      Font.drawBox(0, 7, 16, 6)
+      love.graphics.setColor(0, 0, 0, 1)
+      for i, m in ipairs(self.mimicMoves) do
+        Font.draw(self.data.moves[m.id].name, 16, (7 + i) * 8)
+      end
+      Font.drawCode(0xED, 8, (7 + self.mimicIndex) * 8)
+      Font.draw(Strings("WHICH TECHNIQUE?"), 8, 112)
     end
-    Font.drawCode(0xED, 8, (7 + self.mimicIndex) * 8)
-    Font.draw(Strings("WHICH TECHNIQUE?"), 8, 112)
   end
 end
 

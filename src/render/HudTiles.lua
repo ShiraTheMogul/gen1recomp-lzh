@@ -96,6 +96,19 @@ function HudTiles.tile(code, x, y, tint)
   put(tiles[code], x, y, tint)
 end
 
+-- Mirror one original HUD tile horizontally.  Large-font localizations use
+-- this to turn the cartridge HP bar's right tip into a matching left tip
+-- rather than replacing the Gen 1 meter art with a generic rectangle.
+function HudTiles.tileFlippedX(code, x, y, tint)
+  if not tiles then tiles = build(PAGES) end
+  local t = tiles[code]
+  if not t then return end
+  local r, g, b, a = love.graphics.getColor()
+  love.graphics.setColor(tint or { 1, 1, 1, 1 })
+  love.graphics.draw(t.img, t.quad, x + 8, y, 0, -1, 1)
+  love.graphics.setColor(r, g, b, a)
+end
+
 -- The same sheets under the status screen's overlay (STATUS_PAGES).  The HP
 -- bar codes $62-$6D are identical in both layouts, so drawHPBar below keeps
 -- using the battle table. #280
@@ -146,11 +159,8 @@ end
 -- caller that is animating the bar between two HP values
 -- (UpdateHPBar_AnimateHPBar); it scales with `segments` like the color
 -- thresholds do.  Without it the length comes from mon.hp as before.
-function HudTiles.drawHPBar(data, tx, ty, mon, barType, grayFill, segments, pixels)
-  local x, y = tx * 8, ty * 8
+local function drawGaugeSegments(data, x, y, mon, grayFill, segments, pixels)
   segments = math.max(1, math.floor(segments or 6))
-  HudTiles.tile(0x71, x, y)
-  HudTiles.tile(0x62, x + 8, y)
   local px = 0
   if pixels then
     px = math.max(0, math.floor(pixels * segments / 6))
@@ -167,17 +177,102 @@ function HudTiles.drawHPBar(data, tx, ty, mon, barType, grayFill, segments, pixe
     local colors = PaletteFX.pal(data, name)
     if colors then
       local c = colors[3] -- GB color 2 is the fill shade
-      -- the fill pixels are the 2/3-gray shade; divide so they land on
-      -- the palette color exactly (the black outline stays black)
       tint = { math.min(1, c[1] / 170), math.min(1, c[2] / 170),
                math.min(1, c[3] / 170), 1 }
     end
   end
   for i = 0, segments - 1 do
     local seg = math.min(8, math.max(0, px - i * 8))
-    HudTiles.tile(seg >= 8 and 0x6B or 0x63 + seg, x + 16 + i * 8, y, tint)
+    HudTiles.tile(seg >= 8 and 0x6B or 0x63 + seg, x + i * 8, y, tint)
   end
-  HudTiles.tile(HudTiles.capTile(barType), x + 16 + segments * 8, y)
+  return segments
+end
+
+-- Draw only the cartridge's fill cells: no HP prefix and no left/right cap.
+-- The party list uses exactly this form because its bar is embedded between
+-- the name and telemetry rather than attached to battle-HUD chrome.
+function HudTiles.drawGaugeStrip(data, x, y, mon, grayFill, segments, pixels)
+  return drawGaugeSegments(data, x, y, mon, grayFill, segments, pixels)
+end
+
+function HudTiles.drawGauge(data, x, y, mon, barType, grayFill, segments, pixels)
+  segments = drawGaugeSegments(data, x, y, mon, grayFill, segments, pixels)
+  HudTiles.tile(HudTiles.capTile(barType), x + segments * 8, y)
+end
+
+function HudTiles.drawHPBar(data, tx, ty, mon, barType, grayFill, segments, pixels)
+  local x, y = tx * 8, ty * 8
+  segments = math.max(1, math.floor(segments or 6))
+  HudTiles.tile(0x71, x, y)
+  HudTiles.tile(0x62, x + 8, y)
+  HudTiles.drawGauge(data, x + 16, y, mon, barType, grayFill, segments, pixels)
+end
+
+-- Gen-1-style standalone meter without the baked-in Latin "HP:[" prefix.
+-- Tile $6C is the cartridge's tiny two-pixel HP-bar nub.  Mirror that nub
+-- for the left edge and use the original $6C on the right.  Do NOT use $6D
+-- here: $6D is the tall battle-HUD double vertical, not an HP-bar cap, and
+-- reusing it is what produced the stray black pillars in Party/Status UI.
+-- `segments` counts only the fill cells, so total width is (segments + 2)*8.
+function HudTiles.drawCappedGauge(data, x, y, mon, barType, grayFill, segments, pixels)
+  segments = math.max(1, math.floor(segments or 6))
+  HudTiles.tileFlippedX(0x6C, x, y)
+  drawGaugeSegments(data, x + 8, y, mon, grayFill, segments, pixels)
+  HudTiles.tile(0x6C, x + (segments + 1) * 8, y)
+end
+
+-- Compact framed meter for large-font localizations.  The original HP bar
+-- is made from 8px text/tiles ("HP:[======]").  Once the label becomes a
+-- 12-14px Han glyph, keeping those start tiles produces awkward collisions,
+-- while drawing only the fill loses the left edge and makes low HP hard to
+-- judge.  This meter keeps the battle semantics (including the 48-pixel
+-- animated `pixels` value and SGB palette recoloring) but draws a simple
+-- one-pixel frame that is independent of font metrics.
+function HudTiles.drawMeter(data, x, y, mon, grayFill, width, pixels)
+  width = math.max(8, math.floor(width or 56))
+  local inner = math.max(1, width - 2)
+  local fill = 0
+  if pixels ~= nil then
+    fill = math.floor(math.max(0, pixels) * inner / 48)
+  elseif mon and mon.stats and mon.stats.hp > 0 and mon.hp > 0 then
+    fill = math.floor(mon.hp * inner / mon.stats.hp)
+  end
+  if mon and mon.hp > 0 and fill < 1 then fill = 1 end
+  if fill > inner then fill = inner end
+
+  local g = love.graphics
+  -- Paper first, then black one-pixel frame.  Use filled rectangles rather
+  -- than `rectangle("line")`: on integer-scaled canvases that avoids the
+  -- half-pixel sampling ambiguity of LÖVE line primitives.
+  g.setColor(1, 1, 1, 1)
+  g.rectangle("fill", x, y, width, 7)
+  g.setColor(0, 0, 0, 1)
+  g.rectangle("fill", x, y, width, 1)
+  g.rectangle("fill", x, y + 6, width, 1)
+  g.rectangle("fill", x, y, 1, 7)
+  g.rectangle("fill", x + width - 1, y, 1, 7)
+
+  if fill > 0 then
+    if grayFill then
+      -- Raw DMG shade 2.  Battle/party SGB zones recolor this to the active
+      -- green/yellow/red bar palette exactly as they do the cartridge tiles.
+      local v = 170 / 255
+      g.setColor(v, v, v, 1)
+    else
+      local PaletteFX = require("src.render.PaletteFX")
+      local name = PaletteFX.barPalName(mon.hp, mon.stats.hp, pixels)
+      local colors = PaletteFX.pal(data, name)
+      local c = colors and colors[3]
+      if c then
+        g.setColor(c[1] / 255, c[2] / 255, c[3] / 255, 1)
+      else
+        local v = 170 / 255
+        g.setColor(v, v, v, 1)
+      end
+    end
+    g.rectangle("fill", x + 1, y + 1, fill, 5)
+  end
+  g.setColor(1, 1, 1, 1)
 end
 
 return HudTiles

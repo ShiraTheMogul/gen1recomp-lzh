@@ -4,6 +4,7 @@
 -- / OPTION / EXIT GAME main menu on START or A.
 
 local Font = require("src.render.Font")
+local HanNumber = require("src.render.HanNumber")
 local Music = require("src.core.Music")
 local GameVersion = require("src.core.GameVersion")
 local Strings = require("src.core.Strings")
@@ -448,25 +449,50 @@ function ContinueInfo:draw()
   -- box at (4,7), 8x14 content; labels double-spaced from (5,9)
   Font.drawBox(4, 7, 16, 10)
   love.graphics.setColor(0, 0, 0, 1)
-  -- the name follows the label's real width (one space after it), so a
-  -- localized label longer than PLAYER's six glyphs cannot run into it
-  local playerLabel = Strings("PLAYER")
-  Font.draw(playerLabel, 40, 72)
-  Font.draw((save.player and save.player.name) or "RED",
-    math.max(96, 40 + (#Font.split(playerLabel) + 1) * 8), 72)
+  local playerName = (save.player and save.player.name) or "RED"
+  if HanNumber.enabled() then
+    -- The CONTINUE panel is telemetry, not prose: keep compact 12/14px rows
+    -- aligned to the cartridge's 16px rhythm so translated labels do not
+    -- float upward into the row above.
+    Font.drawSized(Strings("NAME"), 40, 75, 12)
+    Font.drawSized(Strings(playerName), 68, 74, 14)
+  else
+    -- the name follows the label's real width (one space after it), so a
+    -- localized label longer than PLAYER's six glyphs cannot run into it
+    local playerLabel = Strings("PLAYER")
+    Font.draw(playerLabel, 40, 72)
+    Font.draw(playerName,
+      math.max(96, 40 + (#Font.split(playerLabel) + 1) * 8), 72)
+  end
   local badges = require("src.inventory.Badges").count(self.game.data, save)
-  Font.draw(Strings("BADGES"), 40, 88)
-  Font.draw(("%2d"):format(badges), 128, 88)
+  if HanNumber.enabled() then
+    Font.drawSized(Strings("BADGES"), 40, 91, 12)
+    HanNumber.drawRight(badges, 152, 92, 10)
+  else
+    Font.draw(Strings("BADGES"), 40, 88)
+    Font.draw(("%2d"):format(badges), 128, 88)
+  end
   local owned = 0
   for _ in pairs(save.pokedex and save.pokedex.owned or {}) do
     owned = owned + 1
   end
-  Font.draw(Strings("POKéDEX"), 40, 104)
-  Font.draw(("%3d"):format(owned), 120, 104)
+  if HanNumber.enabled() then
+    Font.drawSized(Strings("POKéDEX"), 40, 107, 12)
+    HanNumber.drawRight(owned, 152, 108, 10)
+  else
+    Font.draw(Strings("POKéDEX"), 40, 104)
+    Font.draw(("%3d"):format(owned), 120, 104)
+  end
   local t = math.floor(save.playTime or 0)
-  Font.draw(Strings("TIME"), 40, 120)
-  Font.draw(("%3d:%02d"):format(math.floor(t / 3600),
-                                math.floor(t / 60) % 60), 104, 120)
+  if HanNumber.enabled() then
+    Font.drawSized(Strings("TIME"), 40, 123, 12)
+    HanNumber.drawRightText(HanNumber.clock(math.floor(t / 3600),
+      math.floor(t / 60) % 60), 152, 124, 10)
+  else
+    Font.draw(Strings("TIME"), 40, 120)
+    Font.draw(("%3d:%02d"):format(math.floor(t / 3600),
+                                  math.floor(t / 60) % 60), 104, 120)
+  end
   love.graphics.setColor(1, 1, 1, 1)
 end
 

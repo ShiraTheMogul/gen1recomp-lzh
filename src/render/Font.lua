@@ -30,6 +30,14 @@ local FRAME_TILES = 6
 local TTF_BASE = 0x400000
 Font.TTF_BASE = TTF_BASE
 
+-- Private-use numeral glyph used by the Literary Chinese localization:
+-- U+E000 is the ancient five-stroke tally form of 五 (⿱二三).  It is
+-- deliberately engine-drawn rather than font-dependent so the small HUD
+-- numeral remains unambiguous at 10-12px.
+local PRIVATE_FIVE_CP = 0xE000
+Font.PRIVATE_FIVE_CP = PRIVATE_FIVE_CP
+Font.PRIVATE_FIVE = string.char(0xEE, 0x80, 0x80)
+
 -- The engine's bundled TTF (assets/fonts/plainpixel/README.md: CC-BY 4.0,
 -- Douglas Vautour).  data.font.ttf.file overrides for a mod-shipped font.
 -- 15 is the font's design em: its glyphs only rasterize at their true
@@ -213,7 +221,9 @@ function Font.load(data)
         -- a large CJK em square for legibility while giving punctuation a
         -- narrower logical cell (for example 16px Han + 8px ，/。).
         advances = def.ttf.advances or {},
-        widths = {}, chars = {},
+        numberStyle = def.ttf.numberStyle,
+        numberSize = def.ttf.numberSize or 12,
+        widths = {}, chars = {}, sizedFonts = {},
       }
     else
       require("src.core.Logger").warn("font: could not load ttf %q (%s)",
@@ -229,6 +239,16 @@ end
 function Font.cellHeight()
   local ttf = state and state.ttf
   return ttf and ttf.size or GLYPH
+end
+
+function Font.numberStyle()
+  local ttf = state and state.ttf
+  return ttf and ttf.numberStyle or nil
+end
+
+function Font.numberSize()
+  local ttf = state and state.ttf
+  return ttf and ttf.numberSize or GLYPH
 end
 
 -- re-run load against the data it last saw, so hot reload picks up an
@@ -454,9 +474,31 @@ function Font.encode(text)
   return codes
 end
 
+-- Draw the PUA five-bar numeral as two strokes over three strokes.  The
+-- shape is intentionally geometric: unlike 五/㐅 it survives very small HUD
+-- sizes and its value can be inferred from the five visible tally strokes.
+local function drawPrivateFive(x, y, size)
+  size = math.max(8, math.floor(size or GLYPH))
+  local x0 = x + 1
+  local w = math.max(5, size - 2)
+  local rows
+  if size <= 12 then
+    rows = { 1, 3, 6, 8, 10 }
+  else
+    rows = { 1, 4, 8, 11, 14 }
+  end
+  for _, dy in ipairs(rows) do
+    if dy < size then love.graphics.rectangle("fill", x0, y + dy, w, 1) end
+  end
+end
+
 function Font.drawCode(code, x, y)
   local ttf = state and state.ttf
   if ttf and code >= TTF_BASE then
+    if code - TTF_BASE == PRIVATE_FIVE_CP then
+      drawPrivateFive(x, y, ttf.size)
+      return
+    end
     local prev = love.graphics.getFont()
     love.graphics.setFont(ttf.font)
     local ch = ttfChar(ttf, code)
@@ -483,8 +525,12 @@ function Font.advanceOf(code)
       local ch = ttfChar(ttf, code)
       w = ttf.advances[ch]
       if w == nil then
-        w = ttf.font:getWidth(ch) + ttf.spacing
-          + (ttf.bold and 1 or 0)
+        if code - TTF_BASE == PRIVATE_FIVE_CP then
+          w = ttf.size
+        else
+          w = ttf.font:getWidth(ch) + ttf.spacing
+            + (ttf.bold and 1 or 0)
+        end
       end
       ttf.widths[code] = w
     end
@@ -514,6 +560,76 @@ function Font.draw(text, x, y)
     Font.drawCode(code, pen, y)
     pen = pen + Font.advanceOf(code)
   end
+  return pen - x
+end
+
+-- A small auxiliary TTF is used for information-dense values (levels, HP,
+-- PP, IDs, money) without shrinking normal Literary Chinese prose.  This is
+-- deliberately separate from Font.draw: the main 16px grid remains the
+-- canonical text grid, while callers opt into compact numeric typography.
+local function sizedFont(ttf, size)
+  size = math.max(1, math.floor(size or ttf.size))
+  if size == ttf.size then return ttf.font, ttf.yOffset end
+  local cached = ttf.sizedFonts[size]
+  if cached then return cached.font, cached.yOffset end
+  local ok, obj = pcall(love.graphics.newFont, ttf.file, size, "mono", 1)
+  if not ok or not obj then return ttf.font, ttf.yOffset end
+  if obj.setFilter then pcall(obj.setFilter, obj, "nearest", "nearest") end
+  -- A compact cell owns its own baseline rather than inheriting the 8px GB
+  -- tile baseline used by the main TTF.
+  local yOffset = obj.getBaseline and (size - 1 - obj:getBaseline()) or 0
+  cached = { font = obj, yOffset = yOffset }
+  ttf.sizedFonts[size] = cached
+  return obj, yOffset
+end
+
+local function sizedAdvance(ttf, font, code, size, advances)
+  if code >= TTF_BASE then
+    local ch = ttfChar(ttf, code)
+    if advances and advances[ch] ~= nil then return advances[ch] end
+    if code - TTF_BASE == PRIVATE_FIVE_CP then return size end
+    return font:getWidth(ch) + (ttf.bold and 1 or 0)
+  end
+  local page = pageFor(code)
+  return page and page.advance or GLYPH
+end
+
+function Font.widthSized(text, size, advances)
+  local ttf = state and state.ttf
+  if not ttf then return Font.width(text) end
+  local font = sizedFont(ttf, size)
+  local w = 0
+  for _, code in ipairs(Font.encode(text)) do
+    w = w + sizedAdvance(ttf, font, code, size, advances)
+  end
+  return w
+end
+
+function Font.drawSized(text, x, y, size, advances)
+  local ttf = state and state.ttf
+  if not ttf then return Font.draw(text, x, y) end
+  size = math.max(1, math.floor(size or ttf.size))
+  local font, yOffset = sizedFont(ttf, size)
+  local prev = love.graphics.getFont()
+  love.graphics.setFont(font)
+  local pen = x
+  for _, code in ipairs(Font.encode(text)) do
+    if code >= TTF_BASE then
+      if code - TTF_BASE == PRIVATE_FIVE_CP then
+        drawPrivateFive(pen, y, size)
+      else
+        local ch = ttfChar(ttf, code)
+        love.graphics.print(ch, pen, y + yOffset)
+        if ttf.bold then love.graphics.print(ch, pen + 1, y + yOffset) end
+      end
+    else
+      local page = pageFor(code)
+      local quad = page and page.quads[code - page.base]
+      if quad then love.graphics.draw(page.image, quad, pen, y) end
+    end
+    pen = pen + sizedAdvance(ttf, font, code, size, advances)
+  end
+  if prev then love.graphics.setFont(prev) end
   return pen - x
 end
 

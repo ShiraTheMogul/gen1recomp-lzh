@@ -13,6 +13,7 @@
 -- prompt off it).
 
 local Font = require("src.render.Font")
+local HanNumber = require("src.render.HanNumber")
 local TextBox = require("src.render.TextBox")
 local Strings = require("src.core.Strings")
 
@@ -95,7 +96,11 @@ function DexEntryMenu.render(game, def, sprite, forceOwned, trueColor)
   -- same number width as the list (constants.dexDigits), so a dex past 999
   -- prints the extra digit everywhere at once
   local digits = (game.data.constants or {}).dexDigits or 3
-  Font.draw(Strings("No.") .. ("%0" .. digits .. "d"):format(def.dex or 0), 72, 32)
+  if HanNumber.enabled() then
+    HanNumber.draw(def.dex or 0, 72, 34)
+  else
+    Font.draw(Strings("No.") .. ("%0" .. digits .. "d"):format(def.dex or 0), 72, 32)
+  end
   local owned = forceOwned
     or (game.save.pokedex and game.save.pokedex.owned[def.id])
   -- height/weight print only once owned, like the description

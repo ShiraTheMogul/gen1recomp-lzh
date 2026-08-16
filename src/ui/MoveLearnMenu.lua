@@ -143,19 +143,37 @@ end
 
 function MoveLearnMenu:draw()
   if not self.selecting then return end
-  -- single-spaced move list box (TryingToLearn: TextBoxBorder at 4,7)
-  -- plus the port's extra CANCEL row
-  Font.drawBox(4, 5, 16, 7)
-  love.graphics.setColor(0, 0, 0, 1)
-  for i, mv in ipairs(self.mon.moves) do
-    Font.draw(self.game.data.moves[mv.id].name, 48, (5 + i) * 8)
+
+  if Font.cellHeight() > 8 then
+    -- A 16px CJK glyph cannot use the cartridge's single-spaced 8px rows.
+    -- Five choices (four moves + CANCEL) fit exactly as five 16px rows in
+    -- the upper 96px; the ordinary two-line question keeps the bottom 48px.
+    Font.drawBox(4, 0, 16, 12)
+    love.graphics.setColor(0, 0, 0, 1)
+    local y0 = 8
+    for i, mv in ipairs(self.mon.moves) do
+      Font.draw(self.game.data.moves[mv.id].name, 48, y0 + (i - 1) * 16)
+    end
+    Font.draw(Strings("CANCEL"), 48, y0 + #self.mon.moves * 16)
+    Font.drawCode(CURSOR, 40, y0 + (self.index - 1) * 16)
+    Font.drawBox(0, 12, 20, 6)
+    Font.draw(Strings("Which move should"), 8, 112)
+    Font.draw(Strings("be forgotten?"), 8, 128)
+  else
+    -- single-spaced move list box (TryingToLearn: TextBoxBorder at 4,7)
+    -- plus the port's extra CANCEL row
+    Font.drawBox(4, 5, 16, 7)
+    love.graphics.setColor(0, 0, 0, 1)
+    for i, mv in ipairs(self.mon.moves) do
+      Font.draw(self.game.data.moves[mv.id].name, 48, (5 + i) * 8)
+    end
+    Font.draw(Strings("CANCEL"), 48, (6 + #self.mon.moves) * 8)
+    Font.drawCode(CURSOR, 40, (5 + self.index) * 8)
+    -- WhichMoveToForgetText in the bottom dialogue box
+    Font.drawBox(0, 12, 20, 6)
+    Font.draw(Strings("Which move should"), 8, 14 * 8)
+    Font.draw(Strings("be forgotten?"), 8, 16 * 8)
   end
-  Font.draw(Strings("CANCEL"), 48, (6 + #self.mon.moves) * 8)
-  Font.drawCode(CURSOR, 40, (5 + self.index) * 8)
-  -- WhichMoveToForgetText in the bottom dialogue box
-  Font.drawBox(0, 12, 20, 6)
-  Font.draw(Strings("Which move should"), 8, 14 * 8)
-  Font.draw(Strings("be forgotten?"), 8, 16 * 8)
   love.graphics.setColor(1, 1, 1, 1)
 end
 

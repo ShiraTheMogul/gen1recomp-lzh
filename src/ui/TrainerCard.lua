@@ -7,6 +7,7 @@
 local Assets = require("src.render.Assets")
 local Badges = require("src.inventory.Badges")
 local Font = require("src.render.Font")
+local HanNumber = require("src.render.HanNumber")
 local Strings = require("src.core.Strings")
 
 local TrainerCard = {}
@@ -138,16 +139,51 @@ function TrainerCard:draw()
     end
   end
   love.graphics.setColor(0, 0, 0, 1)
-  Font.draw(Strings("NAME/%s", save.player.name or "RED"), 16, 16)
-  Font.draw(("MONEY/¥%d"):format(save.money or 0), 16, 32)
   local t = math.floor(save.playTime or 0)
-  Font.draw(("TIME/%3d:%02d"):format(math.floor(t / 3600),
-                                     math.floor(t / 60) % 60), 16, 48)
+  if HanNumber.enabled() then
+    -- The trainer card is only 96px wide before the portrait.  Treat labels
+    -- as compact lexical UI and values as telemetry; dynamically step the
+    -- value size down for six-digit money totals rather than falling under
+    -- the portrait.
+    local function fitValue(text, left, right, y, preferred)
+      local chosen = preferred or 10
+      for _, size in ipairs({ preferred or 10, 9, 8, 7 }) do
+        if HanNumber.widthText(text, size) <= right - left then
+          chosen = size
+          break
+        end
+      end
+      -- Use HanNumber's punctuation advances here as well.  The stored clock
+      -- separator remains the proper fullwidth Chinese ：, but it advances as
+      -- compact UI punctuation instead of consuming a whole square cell.
+      HanNumber.drawText(text, left,
+        y + math.max(0, math.floor((12 - chosen) / 2)), chosen)
+    end
+    local playerName = save.player.name or "赤"
+    if playerName == "RED" then playerName = Strings("RED") end
+    Font.drawSized(Strings("NAME"), 8, 12, 12)
+    fitValue(playerName, 32, 96, 11, 14)
+    Font.drawSized(Strings("MONEY"), 8, 28, 12)
+    fitValue(HanNumber.format(save.money or 0), 28, 96, 27, 10)
+    Font.drawSized(Strings("TIME"), 8, 44, 12)
+    fitValue(HanNumber.clock(math.floor(t / 3600),
+      math.floor(t / 60) % 60), 28, 96, 43, 10)
+  else
+    Font.draw(Strings("NAME/%s", save.player.name or "RED"), 16, 16)
+    Font.draw(("MONEY/¥%d"):format(save.money or 0), 16, 32)
+    Font.draw(("TIME/%3d:%02d"):format(math.floor(t / 3600),
+                                       math.floor(t / 60) % 60), 16, 48)
+  end
 
   -- the circle-dotted BADGES banner (TrainerInfo_BadgesText)
   self:frameBox(0, 8, 20, 3)
   love.graphics.setColor(0, 0, 0, 1)
-  Font.draw(Strings("BADGES"), 56, 72)
+  if HanNumber.enabled() then
+    local badgeLabel = Strings("BADGES")
+    Font.drawSized(badgeLabel, 80 - Font.widthSized(badgeLabel, 14) / 2, 69, 14)
+  else
+    Font.draw(Strings("BADGES"), 56, 72)
+  end
   if self.circle then
     love.graphics.setColor(1, 1, 1, 1)
     love.graphics.draw(self.circle, 48, 72)
@@ -163,7 +199,10 @@ function TrainerCard:draw()
     local tx, ty = 16 + col * 32, 94 + row * 24
     -- the extracted sheets cover the eight Kanto slots; a longer badge
     -- list draws its extra entries unnumbered rather than crashing
-    if self.nums and self.nums.quads[i - 1] then
+    if HanNumber.enabled() then
+      love.graphics.setColor(0, 0, 0, 1)
+      HanNumber.draw(i, tx, ty - 1, 10)
+    elseif self.nums and self.nums.quads[i - 1] then
       love.graphics.setColor(1, 1, 1, 1)
       love.graphics.draw(self.nums.img, self.nums.quads[i - 1], tx, ty)
     end
