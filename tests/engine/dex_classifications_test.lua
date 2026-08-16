@@ -14,8 +14,8 @@ local function registry(kind)
         patched[id] = patch.dexEntry and patch.dexEntry.kind
       end
     end,
-    get = function(_, _)
-      if kind == "pokemon" then return { dexEntry = {} } end
+    get = function(_, id)
+      if kind == "pokemon" then return { dexEntry = { text = "_" .. id .. "DexEntry" } } end
       return nil
     end,
     each = function() return function() return nil end end,

@@ -33,6 +33,11 @@ local MEASURE_MIN_SIZE = 9
 -- Twelve pixels keeps Han legible while giving the name a distinct visual
 -- tier and avoiding the slight 16px-on-16px collision seen in the old row.
 local DEX_KIND_SIZE = 12
+-- A handful of longer Literary Chinese entries need a fifth line.  Keep the
+-- normal 16px body whenever four lines suffice; shrink only those entries to
+-- 15px and start them a little higher so all five lines remain visible.
+local DEX_BODY_COMPACT_SIZE = 15
+local DEX_BODY_COMPACT_Y = 66
 
 local function drawMeasure(label, value, x, y)
   local labelWidth = Font.widthSized(label, MEASURE_LABEL_SIZE)
@@ -181,19 +186,29 @@ function DexEntryMenu.render(game, def, sprite, forceOwned, trueColor)
   end
   local text = owned and e.text and game.data.text[e.text] or nil
   local y = 72
-  local lineStep = math.max(10, Font.cellHeight())
   if text then
     -- The dex used to trust hand-inserted \n/\f markers.  Run the description
     -- through the same pixel-width wrapper as dialogue instead, then flatten
     -- its pages because this screen has no textbox page-advance state.
     local wrapped = TextBox.paginate(text, 18)
+    local lines = {}
     for _, page in ipairs(wrapped) do
-      for _, line in ipairs(page) do
-        if y > 132 then break end
+      for _, line in ipairs(page) do lines[#lines + 1] = line end
+    end
+
+    local compact = Font.ttfActive() and #lines > 4
+    local lineStep = compact and DEX_BODY_COMPACT_SIZE
+      or math.max(10, Font.cellHeight())
+    if compact then y = DEX_BODY_COMPACT_Y end
+
+    for _, line in ipairs(lines) do
+      if compact then
+        Font.drawSized(line, 8, y, DEX_BODY_COMPACT_SIZE)
+      else
         Font.draw(line, 8, y)
-        y = y + lineStep
       end
-      if y > 132 then break end
+      y = y + lineStep
+      if y >= 144 then break end
     end
   else
     Font.draw(Strings("Data unknown."), 8, y)
