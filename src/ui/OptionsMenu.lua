@@ -28,6 +28,8 @@ local Runtime = require("src.mods.Runtime")
 local OptionRows = require("src.ui.OptionRows")
 local Renderer = require("src.render.Renderer")
 local Strings = require("src.core.Strings")
+local Font = require("src.render.Font")
+local CharacterVariant = require("src.core.CharacterVariant")
 
 local OptionsMenu = {}
 OptionsMenu.__index = OptionsMenu
@@ -151,6 +153,19 @@ local function buildRows(game)
       step = function(g)
         local i = speedIndex(g) % #SPEEDS + 1
         g.save.options.textSpeed = SPEEDS[i][1]
+        return true
+      end },
+    -- Literary Chinese / CJK TTF builds can switch the rendered Han forms
+    -- without maintaining parallel translations.  Hidden for the vanilla
+    -- tile font, where the setting would have nothing useful to convert.
+    { id = "hanVariant", label = Strings("HAN FORM"),
+      value = function(g)
+        return Strings(CharacterVariant.label(g.save.options.hanVariant))
+      end,
+      step = function(g, dir)
+        local o = g.save.options
+        o.hanVariant = CharacterVariant.cycle(o.hanVariant, dir)
+        CharacterVariant.applyOptions(o)
         return true
       end },
     { id = "animations", label = Strings("BATTLE ANIMATION"),
@@ -520,6 +535,15 @@ local function buildRows(game)
         return true
       end },
   }
+  -- The orthography row is relevant only when text is coming from a Unicode
+  -- TTF.  Vanilla Red/Blue/Yellow keep their original OPTION list.
+  if not Font.ttfActive() then
+    local filtered = {}
+    for _, row in ipairs(rows) do
+      if row.id ~= "hanVariant" then filtered[#filtered + 1] = row end
+    end
+    rows = filtered
+  end
   -- issue #136: hide GBC FX on Android/iOS -- the present shader soft-bricks
   if not GBCFX.isSupported() then
     local filtered = {}

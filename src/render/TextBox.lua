@@ -10,6 +10,7 @@ local Font = require("src.render.Font")
 local UIVisibility = require("src.battle.UIVisibility")
 local Theme = require("src.ui.Theme")
 local Timing = require("src.core.Timing")
+local CharacterVariant = require("src.core.CharacterVariant")
 
 local TextBox = {}
 TextBox.__index = TextBox
@@ -199,6 +200,9 @@ end
 -- pages.contBefore[p][i] is true when line i was preceded by \v (cont):
 -- pokered ContText waits for A/B + ▼ before scrolling that line in.
 function TextBox.paginate(text, maxCols, opts)
+  -- Convert before wrapping: Simplified/Shinjitai is a display preference,
+  -- but pagination must measure and slice the displayed UTF-8 string.
+  text = CharacterVariant.convert(text)
   maxCols = maxCols or (Theme.textBox and Theme.textBox.maxCols) or MAX_COLS
   -- maxCols is a column count, so the budget is that many vanilla 8px
   -- cells.  Measuring in pixels rather than columns is what lets a mod's

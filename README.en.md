@@ -40,6 +40,35 @@ Pressing Space commits the first candidate, while 1–9 can be used to choose an
 
 After completing the name input, normal controls return. 
 
+## Pokédex Measurements
+This hack uses the 營造尺庫平制 promulgated during the Qing dynasty, specifically its 1908 standard. There were many choices, but this one works best for us!
+
+Here is a lowdown of how it looks compared to modern metric measurements:
+### Length
+
+| Measure | Qing standard | Metric | Imperial |
+| ------- | ------------: | -----: | -------: |
+| 丈       |          10 尺 |  3.2 m | 10.499 ft |
+| 尺       |          10 寸 |  32 cm |  12.598 in |
+| 寸       |          10 分 | 3.2 cm |   1.260 in |
+| 分       |             — | 3.2 mm |   0.126 in |
+
+### Weight
+
+| Measure | Qing standard | Metric | Imperial |
+| ------- | ------------: | -----: | -------: |
+| 斤       |          16 兩 | 596.816 g | 1.316 lb |
+| 兩       |          10 錢 |  37.301 g | 1.316 oz |
+| 錢       |          10 分 |  3.7301 g | 0.132 oz |
+
+### Reasoning
+This system is used for several reasons:
+- Professor Oak uses Qing-style prose in this hack because he is a modern researcher. By being the person making an electronic Pokedex, it makes sense to pick a standard that matches him. 
+- Traditional Chinese measurements were never consistent across dynasties. 一尺 was 9.1 inches during Eastern Zhou, but come the Tang it became 12 inches. There is no monkey to return to, I'm afraid!
+- The PRC changed 一斤 from 十六兩 to 十兩 among other things, which throws a lot of measurements out of whack. It also cast off some niche measurements that were considered for use during development. 
+
+The Pokédex converts measurements from their imperial values stored in the English release, on which this hack is based. The foundations of this work will eventually be used for a broader conversion tool on Fanya Hanwen Corpus, another one of my major projects. 
+
 # Texts consulted
 I am a big fan of Literary Chinese, especially from a pan-Asian perspective, so please, do view these texts below. Citations for each coinage are in `㬺獸赤青版.xlsx`. All Literary Chinese texts are available on [Fanya Hanwen Corpus] (https://www.fanyahanwen-corpus.cn/), and many on Wikisource as well.
 * Kroll, P. W., Baxter, W. H., Boltz, W. G., Knechtges, D. R., Lien, Y. E., Richter, A., Richter, M. L., & Warner, D. X. (2017). A student’s dictionary of classical and medieval Chinese (S. F. Teiser, M. Kern, & T. Brook, Eds; Revised edition). Brill.

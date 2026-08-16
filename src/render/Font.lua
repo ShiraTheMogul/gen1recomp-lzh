@@ -15,6 +15,7 @@
 -- is why the box border never depends on the TTF's coverage.
 
 local Assets = require("src.render.Assets")
+local CharacterVariant = require("src.core.CharacterVariant")
 
 local Font = {}
 
@@ -458,6 +459,10 @@ end
 -- render as space (and are reported once).
 local reported = {}
 function Font.encode(text)
+  -- Character-form conversion happens here rather than in Font.split: split
+  -- exposes byte offsets to layout code, and converting underneath those
+  -- offsets could make a caller slice the wrong UTF-8 bytes.
+  text = CharacterVariant.convert(text)
   local codes = {}
   for _, span in ipairs(Font.split(text)) do
     local code = span.code

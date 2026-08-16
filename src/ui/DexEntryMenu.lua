@@ -14,12 +14,38 @@
 
 local Font = require("src.render.Font")
 local HanNumber = require("src.render.HanNumber")
+local QingMeasure = require("src.core.QingMeasure")
 local TextBox = require("src.render.TextBox")
 local Strings = require("src.core.Strings")
 
 local DexEntryMenu = {}
 DexEntryMenu.__index = DexEntryMenu
 DexEntryMenu.isOpaque = true
+
+-- The English Pokédex gives HT/WT labels and their values separate visual
+-- jobs.  Do the same here: 高/重 stay slightly larger, while the actual
+-- measurement uses the 10px compact numeral face also used for status-screen
+-- HP values.  Extremely long values may fall back to 9px, but no smaller.
+local MEASURE_LABEL_SIZE = 12
+local MEASURE_VALUE_SIZE = 10
+local MEASURE_MIN_SIZE = 9
+-- Classification sits between the 16px name and the compact metadata.
+-- Twelve pixels keeps Han legible while giving the name a distinct visual
+-- tier and avoiding the slight 16px-on-16px collision seen in the old row.
+local DEX_KIND_SIZE = 12
+
+local function drawMeasure(label, value, x, y)
+  local labelWidth = Font.widthSized(label, MEASURE_LABEL_SIZE)
+  Font.drawSized(label, x, y, MEASURE_LABEL_SIZE)
+
+  local valueX = x + labelWidth
+  local maxWidth = 160 - valueX
+  local size = MEASURE_VALUE_SIZE
+  while size > MEASURE_MIN_SIZE and HanNumber.widthText(value, size) > maxWidth do
+    size = size - 1
+  end
+  HanNumber.drawText(value, valueX, y + 1, size)
+end
 
 -- SGB: PalPacket_Pokedex (BROWNMON) + the mon pic zone in its palette
 function DexEntryMenu:sgbPalettes(game)
@@ -90,14 +116,29 @@ function DexEntryMenu.render(game, def, sprite, forceOwned, trueColor)
   Font.draw(def.name, 72, 8)
   local e = def.dexEntry or {}
   -- English R/B prints only the kind string (hlcoord 9,4 PlaceString).
-  -- PokeText ("#"/POKéMON) is an unreferenced JPN leftover in pokedex.asm;
-  -- appending " POKéMON" here clipped longer kinds ("LIZARD POKé").
-  Font.draw(e.kind or "?", 72, 20)
+  -- The Literary Chinese translation uses a productive 類 suffix for every
+  -- classification.  The source token is deliberately invisible when no
+  -- translation supplies it, so vanilla keeps the cartridge presentation.
+  local kindSuffix = Strings("DEX KIND SUFFIX")
+  if kindSuffix == "DEX KIND SUFFIX" then kindSuffix = "" end
+  local kind = (e.kind or "?") .. kindSuffix
+  if Font.ttfActive() then
+    -- The species name owns the full 16px Wenjin face.  The classification is
+    -- secondary metadata, so give it the 12px face used around the measurement
+    -- block rather than letting two full-height Han rows scrape each other.
+    Font.drawSized(kind, 72, 21, DEX_KIND_SIZE)
+  else
+    -- Preserve the cartridge layout exactly when no Unicode TTF is active.
+    Font.draw(kind, 72, 20)
+  end
   -- same number width as the list (constants.dexDigits), so a dex past 999
   -- prints the extra digit everywhere at once
   local digits = (game.data.constants or {}).dexDigits or 3
   if HanNumber.enabled() then
-    HanNumber.draw(def.dex or 0, 72, 34)
+    -- Match the Literary Chinese status screen: 第 marks this as an ordinal
+    -- identifier, while digits() preserves the cartridge's fixed-width
+    -- leading zeroes instead of reading the dex number as a quantity.
+    HanNumber.drawText("第" .. HanNumber.digits(def.dex or 0, digits), 72, 31, 8)
   else
     Font.draw(Strings("No.") .. ("%0" .. digits .. "d"):format(def.dex or 0), 72, 32)
   end
@@ -107,15 +148,35 @@ function DexEntryMenu.render(game, def, sprite, forceOwned, trueColor)
   -- (pokedex.asm: "if the pokemon has not been owned, don't print the
   -- height, weight, or description")
   if owned and e.heightFt then
-    -- feet/inches use the dex screen's ′/″ glyphs ("HT  ?′??″" in
-    -- pokedex.asm; the tiles come from gfx/pokedex/pokedex.png via
-    -- engine/gfx/load_pokedex_tiles.asm)
     if e.heightM then
+      -- Non-Gen-I datasets may supply already-localized metric values; keep
+      -- their existing renderer rather than silently applying the Qing Red/
+      -- Blue convention to data with a different provenance.
       Font.draw((Strings("GR. %.1fm", e.heightM):gsub("(%d)%.(%d)", "%1,%2")), 72, 44)
       Font.draw((Strings("GEW. %.1fkg", e.weightKg or 0):gsub("(%d)%.(%d)", "%1,%2")), 72, 54)
     else
-      Font.draw(Strings("HT %d′%02d″", e.heightFt, e.heightIn or 0), 72, 44)
-      Font.draw(Strings("WT %.1flb", (e.weight or 0) / 10), 72, 54)
+      -- Literary Chinese Red/Blue uses the 1908 營造尺庫平制.  The ROM's
+      -- whole-inch and tenth-pound source values are rounded to the nearest
+      -- 寸 and 兩 respectively; smaller subdivisions would claim precision
+      -- the original data does not contain.
+      local h = QingMeasure.lengthFromFeetInches(e.heightFt, e.heightIn or 0)
+      local w = QingMeasure.weightFromTenthsPounds(e.weight or 0)
+
+      local height = {}
+      if h.zhang > 0 then height[#height + 1] = HanNumber.format(h.zhang) .. "丈" end
+      if h.chi > 0 then height[#height + 1] = HanNumber.format(h.chi) .. "尺" end
+      if h.cun > 0 then height[#height + 1] = HanNumber.format(h.cun) .. "寸" end
+      if #height == 0 then height[1] = HanNumber.format(0) .. "寸" end
+
+      local weight = {}
+      if w.jin > 0 then weight[#weight + 1] = HanNumber.format(w.jin) .. "斤" end
+      if w.liang > 0 then weight[#weight + 1] = HanNumber.format(w.liang) .. "兩" end
+      if #weight == 0 then weight[1] = HanNumber.format(0) .. "兩" end
+
+      -- Keep the metadata block clear of the description below.  The old
+      -- coordinates left the bottom of 重/weight grazing the first dex line.
+      drawMeasure("高", table.concat(height), 72, 41)
+      drawMeasure("重", table.concat(weight), 72, 52)
     end
   end
   local text = owned and e.text and game.data.text[e.text] or nil

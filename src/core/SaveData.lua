@@ -230,6 +230,9 @@ function SaveData.defaultOptions()
     -- textSpeed 3 = MEDIUM, matching InitOptions' TEXT_DELAY_MEDIUM
     -- in wOptions (engine/menus/main_menu.asm)
     textSpeed = 3,
+    -- Presentation-only Han orthography.  Translation/source data stays
+    -- Traditional; CharacterVariant converts immediately before layout.
+    hanVariant = "traditional", -- traditional | simplified | shinjitai
     animations = true,
     battleStyle = "shift",
     -- battle screen composition: og (the 160x144 original) | wide

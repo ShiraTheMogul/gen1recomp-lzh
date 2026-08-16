@@ -1095,6 +1095,7 @@ function Game:applyOptions(opts)
   local Sound = require("src.core.Sound")
   if Music.applyOptions then Music.applyOptions(opts) end
   if Sound.applyOptions then Sound.applyOptions(opts) end
+  require("src.core.CharacterVariant").applyOptions(opts)
   require("src.render.PaletteFX").applyOptions(opts)
   require("src.render.Tilt").applyOptions(opts)
   -- after Tilt, so a persisted world pipeline can switch the tilt level it
