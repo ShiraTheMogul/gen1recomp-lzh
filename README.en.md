@@ -7,6 +7,39 @@ It is largely the vanilla game, with the only big change being trade evolutions 
 
 Translations were made using texts from across Chinese, Okinawan, and Japanese history as major resources. Most names come from some sort of text; any that are not are made in as conservative a manner as possible. Major inspirations include Yan Fu (嚴復), Sai On (蔡温), Honda Chikaatsu (本田親徳), Gongyang Gao (公羊高), and Master Meng (孟子). These are but a mere few of the broader individuals I have read and enjoyed. 
 
+# Features
+## Cangjie Input Method
+Because Literary Chinese is a pan-Asian language, I decided to adopt Cangjie Input for the translation. This ensures that no player has to learn a new pronunciation just to type this language. The ancients didn't work this way, and 19th Century Chinese, Japanese, Okinawan, Korean, Jejuan, and Vietnamese people didn't either. Engage with the structure of characters to type!
+
+The IME supports Han input by default, but also supports Latin letters (ABC) in all-caps. There are also two typing modes: Game Boy, for the accuracy; and Keyboard, for those who have one and want muscle memory. An unfinished Cangjie composition is preserved when switching between 鍵盤 and 遊戲兒, or between 字根 and ABC. Confirm entries with 定.
+
+### Game Boy Mode
+Use the cursor to move around the Cangjie board and press A to enter a component. Candidates can be navigated with the normal directional controls once they appear. Press A to commit the highlighted character.
+
+While composing a Cangjie code:
+* B removes the most recently entered component.
+* Start moves the cursor directly to the candidate row.
+* Selecting 定 also sends you to the candidates rather than discarding an unfinished composition.
+
+When no Cangjie composition is active, B deletes the previous character of the entered name. 
+
+### Keyboard Mode
+This works with your keyboard and treats it like it's a text file, basically. Select 鍵盤 to enable direct physical-keyboard Cangjie typing. The button then changes to 遊戲兒, which returns to Game Boy mode.
+
+Key	Action
+* Use A–Z or 手-一 to enter Cangjie directly
+* Space - Commit the first candidate
+* 1–9 - Commit the corresponding visible candidate
+* Enter - Normal Game Boy A
+* Backspace - Normal Game Boy B
+* Arrow keys - Navigate normally
+* Tab - Normal Select
+* Escape - Normal Start
+
+Pressing Space commits the first candidate, while 1–9 can be used to choose another visible candidate directly.
+
+After completing the name input, normal controls return. 
+
 # Texts consulted
 I am a big fan of Literary Chinese, especially from a pan-Asian perspective, so please, do view these texts below. Citations for each coinage are in `㬺獸赤青版.xlsx`. All Literary Chinese texts are available on [Fanya Hanwen Corpus] (https://www.fanyahanwen-corpus.cn/), and many on Wikisource as well.
 * Kroll, P. W., Baxter, W. H., Boltz, W. G., Knechtges, D. R., Lien, Y. E., Richter, A., Richter, M. L., & Warner, D. X. (2017). A student’s dictionary of classical and medieval Chinese (S. F. Teiser, M. Kern, & T. Brook, Eds; Revised edition). Brill.

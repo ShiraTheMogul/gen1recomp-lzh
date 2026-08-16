@@ -613,8 +613,14 @@ end
 
 function Game:keypressed(key)
   if self.stack and self.stack:top() and self.stack:top().onKeyPressed then
-    self.stack:top():onKeyPressed(key)
-    return
+    -- Raw-key screens historically captured the entire keyboard: their
+    -- handlers return nil, and nil still means "handled" here.  A screen may
+    -- now explicitly return false for a key it does NOT own, allowing that key
+    -- to continue through the normal host-hotkey and Game Boy binding path.
+    -- This keeps modal text input from having to reimplement Input:keypressed
+    -- (and, critically, keeps press/release ownership symmetrical).
+    local handled = self.stack:top():onKeyPressed(key)
+    if handled ~= false then return end
   end
   if devMode and key == "f5" then
     require("src.dev.HotReload").run(self)
