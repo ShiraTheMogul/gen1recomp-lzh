@@ -10,6 +10,7 @@ local BagMenu = {}
 
 local Bag = require("src.inventory.Bag")
 local Strings = require("src.core.Strings")
+local HanNumber = require("src.render.HanNumber")
 
 -- acquisition order like wBagItems (Bag.order), not alphabetical
 local function buildItems(game)
@@ -454,7 +455,7 @@ function BagMenu.new(game, opts)
   local list
   list = ListMenu.new(game, "ITEMS", buildItems(game), {
     kind = "bag",
-    footer = ("¥%d"):format(game.save.money),
+    footer = HanNumber.format(game.save.money) .. Strings("CURRENCY_UNIT"),
     -- B returns to the start menu when the bag was opened from it
     onCancel = opts.onCancel,
     -- SELECT reorders items like the original bag (swap_items.asm)

@@ -1,4 +1,4 @@
--- The battle state: wild and trainer battles driven entirely by generated
+﻿-- The battle state: wild and trainer battles driven entirely by generated
 -- data (species, moves, type chart, trainer parties, encounter tables).
 --
 -- Flow: intro -> menu (FIGHT/PKMN/ITEM/RUN) -> move select -> turn
@@ -1667,8 +1667,9 @@ function BattleState:enter()
     -- playerMonFainted queues on the battle screen; there is no battle
     -- screen to queue them on here, so they print over the map.
     self.game.stack:push(require("src.render.TextBox").new(self.game,
-      Strings("%s 之㬺獸尽矣！", name) .. "\f"
-      .. Strings("%s 冥矣！", name), blackedOut))
+      self:romText("_PlayerBlackedOutText2",
+        "%s is out of\nuseable POKéMON!\f%s blacked\nout!", name, name),
+      blackedOut))
     return
   end
   self.musicKind = self:computeMusicKind()
@@ -2148,7 +2149,7 @@ function BattleState:update(dt)
       require("src.core.Sound").play(self.data, "Press_AB")
       local choice = ({ "fight", "pkmn", "item", "run" })[self.menuIndex]
       if choice == "fight" and self.ghost then
-        self:say(Strings("%s重足而立！", self.player.name))
+        self:say(self:romText("_ScaredText", "%s is too\nscared to move!", self.player.name))
         self.phase = "messages"
         self.afterQueue = "menu"
         self:act(function()
@@ -2168,7 +2169,7 @@ function BattleState:update(dt)
         end
         if not self:playerHasPP() then
           -- _NoMovesLeftText, then Struggle engages
-          self:say(Strings("%s無技可發！", self.player.name))
+          self:say(self:romText("_NoMovesLeftText", "%s has no\nmoves left!", self.player.name))
           self:resolveTurn({ id = "STRUGGLE", pp = 1, struggle = true })
           return
         end
@@ -4030,7 +4031,7 @@ function BattleState:awardExp()
       elseif traded then
         text = Strings.source("%s gained\na boosted\v%d EXP. Points!")
       end
-      local amount = HanNumber.enabled() and HanNumber.format(gained) or gained
+      local amount = HanNumber.enabled() and HanNumber.prose(gained) or gained
       self:sayNext(Strings(text, name, amount))
     end
     -- per level: GrewLevelText -> the stats window (PrintStatsBox) ->
@@ -4042,7 +4043,7 @@ function BattleState:awardExp()
         .modifyHappiness(game.save, "LEVELUP", mon)
       -- GrewLevelText: text_far, sound_level_up, text_end (experience.asm:
       -- 369-372); PrintStatsBox only runs once PrintText has returned
-      local shownLevel = HanNumber.enabled() and HanNumber.format(lv) or lv
+      local shownLevel = HanNumber.enabled() and HanNumber.prose(lv) or lv
       self:sayNextWaitSfx(Strings("%s grew\nto level %d!", name, shownLevel),
         function() return require("src.core.Sound").play(game.data, "Level_Up") end)
       self:uiNext(function()
@@ -4281,8 +4282,8 @@ function BattleState:enemyMonFainted()
       end
     end
     if HanNumber.enabled() then
-      self:sayNext(self:romText("_MoneyForWinningText", "%s獲金%s！",
-        self.game.save.player.name, HanNumber.format(prize)))
+      self:sayNext(self:romText("_MoneyForWinningText", "%s獲%s元！",
+        self.game.save.player.name, HanNumber.prose(prize)))
     else
       self:sayNext(self:romText("_MoneyForWinningText", "%s got ¥%d\nfor winning!",
         self.game.save.player.name, prize))

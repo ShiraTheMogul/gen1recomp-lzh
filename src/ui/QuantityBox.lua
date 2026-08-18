@@ -3,6 +3,8 @@
 -- Shows a running price when opts.unitPrice is set.
 
 local Font = require("src.render.Font")
+local Strings = require("src.core.Strings")
+local HanNumber = require("src.render.HanNumber")
 
 local QuantityBox = {}
 QuantityBox.__index = QuantityBox
@@ -48,11 +50,12 @@ function QuantityBox:draw()
   local ty = 9
   Font.drawBox(tx, ty, tw, 3)
   love.graphics.setColor(0, 0, 0, 1)
-  local s = ("×%02d"):format(self.qty) -- the multiply glyph tile
+  local s = "×" .. HanNumber.digits(self.qty, 2) -- preserve the 2-place selector
   if self.unitPrice then
-    s = s .. (" ¥%d"):format(self.qty * self.unitPrice)
+    s = s .. " " .. HanNumber.format(self.qty * self.unitPrice)
+      .. Strings("CURRENCY_UNIT")
   end
-  Font.draw(s, (tx + 1) * 8, (ty + 1) * 8)
+  Font.drawSized(s, (tx + 1) * 8, (ty + 1) * 8 - 1, 10)
   love.graphics.setColor(1, 1, 1, 1)
 end
 

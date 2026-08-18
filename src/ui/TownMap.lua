@@ -15,6 +15,7 @@
 
 local Font = require("src.render.Font")
 local Sound = require("src.core.Sound")
+local Strings = require("src.core.Strings")
 
 local TownMap = {}
 TownMap.__index = TownMap
@@ -41,7 +42,7 @@ local function entryName(e, mapId)
 end
 
 local function isRoute(loc)
-  return loc.name:find("ROUTE", 1, true) ~= nil
+  return loc.route == true or loc.name:find("ROUTE", 1, true) ~= nil
 end
 
 -- Build the ordered location list.  Grid mode dedupes shared entries
@@ -64,9 +65,14 @@ local function buildLocations(game)
         local key = ("%s:%d:%d"):format(name, x, y)
         local loc = seen[key]
         if not loc then
-          loc = { name = name, x = x, y = y }
+          loc = { name = name, x = x, y = y,
+                  route = mapId:find("^ROUTE_") ~= nil }
           seen[key] = loc
           table.insert(locs, loc)
+        elseif mapId:find("^ROUTE_") then
+          -- Interior/route aliases may reach the same map square in either
+          -- pairs() order; once any owning map is a route, keep that identity.
+          loc.route = true
         end
         byMap[mapId] = loc
       end
@@ -130,7 +136,33 @@ end
 -- the row-0 name banner; fly mode prefixes "To " like LoadTownMap_Fly
 -- (engine/menus/town_map.asm prints the destination as "To <NAME>")
 function TownMap:bannerText(loc)
-  return (self.fly and "To " or "") .. loc.name
+  return self.fly and Strings("To %s", loc.name) or loc.name
+end
+
+local function usesLargeGlyphs(text)
+  for _, span in ipairs(Font.split(text or "")) do
+    if span.code and span.code >= Font.TTF_BASE then return true end
+  end
+  return false
+end
+
+-- English Red/Blue has a one-tile name strip.  Japanese uses a bordered
+-- name window; a 16px Han/kana glyph cannot physically fit the 8px strip,
+-- so localized TTF text gets the bordered form while vanilla text keeps
+-- the cartridge-style strip.
+local function drawTopBanner(text)
+  if not text or text == "" then return end
+  if usesLargeGlyphs(text) then
+    local tw = math.max(4, math.min(20, math.ceil((Font.width(text) + 16) / 8)))
+    Font.drawBox(0, 0, tw, 4)
+    love.graphics.setColor(0, 0, 0, 1)
+    Font.draw(text, 8, 8)
+  else
+    love.graphics.setColor(1, 1, 1, 1)
+    love.graphics.rectangle("fill", 0, 0, 160, 8)
+    love.graphics.setColor(0, 0, 0, 1)
+    Font.draw(text, 8, 0)
+  end
 end
 
 -- Fly mode selection set (engine/menus/town_map.asm LoadTownMap_Fly): the
@@ -336,12 +368,10 @@ function TownMap:draw()
           end
         end
       end
-      love.graphics.rectangle("fill", 0, 0, 160, 8)
-      love.graphics.setColor(0, 0, 0, 1)
       local def = self.game.data.pokemon[self.nestSpecies]
       local name = def and def.name or self.nestSpecies
-      Font.draw(#self.nests > 0 and (name .. "'s NEST")
-                or (name .. " AREA UNKNOWN"), 8, 0)
+      drawTopBanner(#self.nests > 0 and Strings("%s's NEST", name)
+                    or Strings("%s AREA UNKNOWN", name))
       love.graphics.setColor(1, 1, 1, 1)
       return
     end
@@ -373,10 +403,9 @@ function TownMap:draw()
         love.graphics.setColor(1, 1, 1, 1)
       end
     end
-    -- the name strip on row 0 (DisplayTownMap: ClearScreenArea + name)
-    love.graphics.rectangle("fill", 0, 0, 160, 8)
-    love.graphics.setColor(0, 0, 0, 1)
-    if selected then Font.draw(self:bannerText(selected), 8, 0) end
+    -- The western ROM uses a one-tile strip; East Asian text uses the
+    -- bordered banner above so its full-height glyphs are never clipped.
+    if selected then drawTopBanner(self:bannerText(selected)) end
     love.graphics.setColor(1, 1, 1, 1)
     return
   end
@@ -425,9 +454,13 @@ function TownMap:draw()
   end
 
   -- name banner across the top
-  Font.drawBox(0, 0, 20, 3)
-  love.graphics.setColor(0, 0, 0, 1)
-  if selected then Font.draw(self:bannerText(selected), 8, 8) end
+  if selected and usesLargeGlyphs(self:bannerText(selected)) then
+    drawTopBanner(self:bannerText(selected))
+  else
+    Font.drawBox(0, 0, 20, 3)
+    love.graphics.setColor(0, 0, 0, 1)
+    if selected then Font.draw(self:bannerText(selected), 8, 8) end
+  end
   love.graphics.setColor(1, 1, 1, 1)
 end
 

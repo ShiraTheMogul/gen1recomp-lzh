@@ -13,6 +13,7 @@ local ListMenu = require("src.ui.ListMenu")
 local Menu = require("src.ui.Menu")
 local QuantityBox = require("src.ui.QuantityBox")
 local Strings = require("src.core.Strings")
+local HanNumber = require("src.render.HanNumber")
 
 local ShopMenu = {}
 
@@ -28,7 +29,7 @@ local function buy(game, stock)
       table.insert(items, {
         value = id,
         label = def.name,
-        right = ("¥%d"):format(def.price),
+        right = HanNumber.format(def.price) .. Strings("CURRENCY_UNIT"),
       })
     end
   end
@@ -37,6 +38,7 @@ local function buy(game, stock)
                         Strings("You don't have\nenough money."))
   local list
   list = ListMenu.new(game, "BUY", items, {
+    kind = "shop",
     dialogue = true,
     money = function() return game.save.money end,
     footer = greet,

@@ -15,6 +15,7 @@ local Music = require("src.core.Music")
 local Sound = require("src.core.Sound")
 local TypeChart = require("src.battle.TypeChart")
 local Strings = require("src.core.Strings")
+local HanNumber = require("src.render.HanNumber")
 
 local HallOfFame = {}
 HallOfFame.__index = HallOfFame
@@ -374,7 +375,8 @@ function HallOfFame:drawPlayerStats()
             5 * 8, 7 * 8)
   Font.draw(Strings("MONEY"), 1 * 8, 9 * 8)
   -- PrintBCDNumber with MONEY_SIGN; port uses ¥ like TrainerCard
-  Font.draw(("¥%d"):format(save.money or 0), 4 * 8, 10 * 8)
+  Font.drawSized(HanNumber.format(save.money or 0) .. Strings("CURRENCY_UNIT"),
+                 4 * 8, 10 * 8 - 1, 10)
 end
 
 function HallOfFame:draw()

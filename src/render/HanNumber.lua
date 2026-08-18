@@ -1,4 +1,4 @@
--- Compact traditional numeral formatter for localized UI.
+﻿-- Compact traditional numeral formatter for localized UI.
 --
 -- The Literary Chinese localization uses tally-like low-complexity digits in
 -- dense HUD contexts: 亖 for 4 and a private-use five-bar glyph (U+E000,
@@ -93,6 +93,18 @@ function HanNumber.format(value)
   if n == 0 then return DIGIT[0] end
   if n < 0 then return "負" .. positive(-n) end
   return positive(n)
+end
+
+-- Dialogue uses the full-size Wenjin glyphs, where the deliberately geometric
+-- HUD tally for five reads as a stack of bars.  Keep compact 亖/PUA-five in
+-- dense numeric UI, but normalize them to ordinary 四/五 when a quantity is
+-- inserted into prose such as experience and prize-money messages.
+function HanNumber.prose(value)
+  local out = HanNumber.format(value)
+  if not HanNumber.enabled() then return out end
+  out = out:gsub(Font.PRIVATE_FIVE, "五")
+  out = out:gsub("亖", "四")
+  return out
 end
 
 -- Identifier formatting is deliberately distinct from arithmetic formatting.

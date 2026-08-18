@@ -6,6 +6,7 @@ local Font = require("src.render.Font")
 local Runtime = require("src.mods.Runtime")
 local Theme = require("src.ui.Theme")
 local Strings = require("src.core.Strings")
+local HanNumber = require("src.render.HanNumber")
 
 local ListMenu = {}
 ListMenu.__index = ListMenu
@@ -233,7 +234,13 @@ function ListMenu:draw()
       love.graphics.setColor(0, 0, 0, 1)
     end
     if item.right then
-      Font.draw(item.right, 160 - 8 - Font.width(item.right), y)
+      if self.kind == "shop" then
+        local rightSize = 10
+        Font.drawSized(item.right,
+          160 - 8 - Font.widthSized(item.right, rightSize), y - 1, rightSize)
+      else
+        Font.draw(item.right, 160 - 8 - Font.width(item.right), y)
+      end
     end
     if i == self.index then
       -- hollowIndex: a chosen row keeps the hollow '▷' left behind by
@@ -254,8 +261,10 @@ function ListMenu:draw()
     -- right-aligned on its middle row
     Font.drawBox(11, 0, 9, 3)
     love.graphics.setColor(0, 0, 0, 1)
-    local money = ("¥%d"):format(self.money and self.money() or 0)
-    Font.draw(money, 152 - Font.width(money), 8)
+    local money = HanNumber.format(self.money and self.money() or 0)
+      .. Strings("CURRENCY_UNIT")
+    local moneySize = 10
+    Font.drawSized(money, 152 - Font.widthSized(money, moneySize), 7, moneySize)
   end
   if self.dialogue or (self.messageBox and self.footer) then
     -- standard bottom text box (PrintText); long prompts wrap and keep
@@ -274,15 +283,21 @@ function ListMenu:draw()
       end
     end
   elseif self.footer then
-    -- bare footer (bag money line, etc.)
-    local flat = {}
-    for _, page in ipairs(require("src.render.TextBox").paginate(self.footer)) do
-      for _, line in ipairs(page) do flat[#flat + 1] = line end
-    end
-    local y = (#flat >= 2) and 120 or 136
-    for i = math.max(1, #flat - 1), #flat do
-      Font.draw(flat[i], 8, y)
-      y = y + 16
+    -- The bag's money footer sits on the last 8px row.  A full-size Han
+    -- currency glyph would be clipped there, so draw that compact telemetry
+    -- with the auxiliary TTF while all ordinary text keeps the normal grid.
+    if self.kind == "bag" then
+      Font.drawSized(self.footer, 8, 132, 10)
+    else
+      local flat = {}
+      for _, page in ipairs(require("src.render.TextBox").paginate(self.footer)) do
+        for _, line in ipairs(page) do flat[#flat + 1] = line end
+      end
+      local y = (#flat >= 2) and 120 or 136
+      for i = math.max(1, #flat - 1), #flat do
+        Font.draw(flat[i], 8, y)
+        y = y + 16
+      end
     end
   end
   love.graphics.setColor(1, 1, 1, 1)

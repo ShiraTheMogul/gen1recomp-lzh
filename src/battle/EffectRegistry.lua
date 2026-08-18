@@ -10,6 +10,7 @@ local Runtime = require("src.mods.Runtime")
 local StatusRegistry = require("src.battle.StatusRegistry")
 local romText = require("src.core.RomText")
 local Strings = require("src.core.Strings")
+local HanNumber = require("src.render.HanNumber")
 local Timing = require("src.core.Timing")
 
 local EffectRegistry = {}
@@ -296,11 +297,15 @@ function EffectRegistry.runDamaging(battle, ctx, record)
   end
   hits = landed > 0 and landed or hits
   if hits > 1 then
-    -- player: _MultiHitText; enemy: _HitXTimesText (always plural)
+    -- player: _MultiHitText; enemy: _HitXTimesText (always plural).
+    -- Han-number UI keeps the hit count in the same numeral system as the
+    -- rest of the localized battle HUD; vanilla numberStyle still passes
+    -- the original integer unchanged.
+    local shownHits = HanNumber.enabled() and HanNumber.format(hits) or hits
     if user.isPlayer then
-      battle:sayNext(romText(battle.data, "_MultiHitText", "Hit the enemy\n%d times!", hits))
+      battle:sayNext(romText(battle.data, "_MultiHitText", "Hit the enemy\n%s times!", shownHits))
     else
-      battle:sayNext(romText(battle.data, "_HitXTimesText", "Hit %d times!", hits))
+      battle:sayNext(romText(battle.data, "_HitXTimesText", "Hit %s times!", shownHits))
     end
   end
 

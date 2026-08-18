@@ -1,4 +1,4 @@
--- Trainer card (engine/menus/start_sub_menus.asm DrawTrainerInfo):
+﻿-- Trainer card (engine/menus/start_sub_menus.asm DrawTrainerInfo):
 -- NAME / MONEY / TIME with the player's front pic upper-right, the
 -- circle-dotted BADGES banner, and the numbered badge grid.  The boxes
 -- are built from the real trainer_info.png frame tiles (the patterned
@@ -164,13 +164,13 @@ function TrainerCard:draw()
     Font.drawSized(Strings("NAME"), 8, 12, 12)
     fitValue(playerName, 32, 96, 11, 14)
     Font.drawSized(Strings("MONEY"), 8, 28, 12)
-    fitValue(HanNumber.format(save.money or 0), 28, 96, 27, 10)
+    fitValue(HanNumber.format(save.money or 0) .. Strings("CURRENCY_UNIT"), 28, 96, 27, 10)
     Font.drawSized(Strings("TIME"), 8, 44, 12)
     fitValue(HanNumber.clock(math.floor(t / 3600),
       math.floor(t / 60) % 60), 28, 96, 43, 10)
   else
     Font.draw(Strings("NAME/%s", save.player.name or "RED"), 16, 16)
-    Font.draw(("MONEY/¥%d"):format(save.money or 0), 16, 32)
+    Font.drawSized(Strings("MONEY/¥%d", save.money or 0), 16, 31, 10)
     Font.draw(("TIME/%3d:%02d"):format(math.floor(t / 3600),
                                        math.floor(t / 60) % 60), 16, 48)
   end

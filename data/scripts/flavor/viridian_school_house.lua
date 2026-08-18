@@ -12,6 +12,7 @@
 local Font = require("src.render.Font")
 local Theme = require("src.ui.Theme")
 local TextBox = require("src.render.TextBox")
+local Strings = require("src.core.Strings")
 
 -- ViridianSchoolBlackboard (engine/events/hidden_events/school_blackboard.asm):
 -- StatusAilmentText1/2 are the two columns of the 12x8 box at the top left
@@ -19,11 +20,11 @@ local TextBox = require("src.render.TextBox")
 -- ViridianBlackboardStatusPointers entry and jumps back to .blackboardLoop,
 -- QUIT or B falls through to .exitBlackboard.
 local STATUS_LABELS = {
-  { " SLP", "_ViridianBlackboardSleepText" },
-  { " PSN", "_ViridianBlackboardPoisonText" },
-  { " PAR", "_ViridianBlackboardPrlzText" },
-  { " BRN", "_ViridianBlackboardBurnText" },
-  { " FRZ", "_ViridianBlackboardFrozenText" },
+  { "SLP", "_ViridianBlackboardSleepText" },
+  { "PSN", "_ViridianBlackboardPoisonText" },
+  { "PAR", "_ViridianBlackboardPrlzText" },
+  { "BRN", "_ViridianBlackboardBurnText" },
+  { "FRZ", "_ViridianBlackboardFrozenText" },
 }
 
 -- The headings list is a two-column menu, which src/ui/Menu.lua does not do
@@ -36,10 +37,27 @@ local STATUS_LABELS = {
 -- are not in wMenuWatchedKeys, so they only slide the cursor and loop.
 local BOARD_LABELS = {}
 for i, row in ipairs(STATUS_LABELS) do BOARD_LABELS[i] = row[1] end
-BOARD_LABELS[#BOARD_LABELS + 1] = " QUIT"
+BOARD_LABELS[#BOARD_LABELS + 1] = "QUIT"
 local BOARD_COL_X = { 1, 6 }
 local BOARD_ROW_Y = 2
 local BOARD_ROWS = 3
+
+local function boardUsesLargeGlyphs()
+  for _, source in ipairs(BOARD_LABELS) do
+    for _, span in ipairs(Font.split(Strings(source, "viridianBlackboard"))) do
+      if span.code and span.code >= Font.TTF_BASE then return true end
+    end
+  end
+  return false
+end
+
+local function boardRowY(row)
+  if boardUsesLargeGlyphs() then
+    -- Three 16px rows exactly fill the 48px interior of the 12x8 box.
+    return (1 + (row - 1) * 2) * 8
+  end
+  return (BOARD_ROW_Y + row - 1) * 8
+end
 
 local StatusBoard = {}
 StatusBoard.__index = StatusBoard
@@ -86,12 +104,13 @@ function StatusBoard:draw()
   for i, label in ipairs(BOARD_LABELS) do
     local col = i <= BOARD_ROWS and 1 or 2
     local row = i - (col - 1) * BOARD_ROWS
-    Font.draw(label, BOARD_COL_X[col] * 8, (BOARD_ROW_Y + row - 1) * 8)
+    Font.draw(Strings(label, "viridianBlackboard"),
+              BOARD_COL_X[col] * 8 + 8, boardRowY(row))
   end
   -- wTopMenuItemX equals the column PlaceString started at, so the cursor
   -- covers the blank each label leads with
   Font.drawCode(Theme.cursor, BOARD_COL_X[self.col] * 8,
-                (BOARD_ROW_Y + self.row - 1) * 8)
+                boardRowY(self.row))
   love.graphics.setColor(1, 1, 1, 1)
 end
 

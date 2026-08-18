@@ -96,6 +96,16 @@ function Commands.show_text(ctx, textId, subs, extraOpts)
       if token == "RAM" and ctx.pendingPokemonName then
         replacement = ctx.pendingPokemonName
         ctx.pendingPokemonName = nil
+      elseif token == "RAM" and type(value) == "string" then
+        -- Hand-ported scripts often pass an internal data id (CHARMANDER,
+        -- POTION, etc.) where the cartridge would have copied the display
+        -- name into wNameBuffer first.  Resolve that id through the merged
+        -- registries so localization reaches gift/received text too.
+        local data = ctx.game.data
+        local def = (data.pokemon and data.pokemon[value])
+          or (data.items and data.items[value])
+          or (data.moves and data.moves[value])
+        if def and def.name then replacement = def.name end
       end
       text = text:gsub("{" .. token .. ":?[%w_]*}", replacement)
     end
@@ -732,7 +742,7 @@ function Commands.give_pokemon(ctx, species, level, skipNickname)
   local mon = Pokemon.new(ctx.game.data, species, level)
   if gift.nickname then mon.nickname = gift.nickname end
   ctx.game.stringBuffer = ctx.game.data.pokemon[species].name or species
-  ctx.pendingPokemonName = species
+  ctx.pendingPokemonName = ctx.game.stringBuffer
   require("src.battle.BattleState").stampOT(ctx.save, mon)
   local addedToParty = Party.add(ctx.save.party, mon)
   local boxNum = nil

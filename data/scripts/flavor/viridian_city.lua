@@ -14,6 +14,8 @@
 --    (ViridianCityCheckGymOpenScript), implemented by story5.lua's
 --    onStep chain (viridianGymLock -> viridianOldManStep) for this map.
 
+local Strings = require("src.core.Strings")
+
 local M = {}
 
 local function text(game) return game.data.text end
@@ -73,9 +75,9 @@ M.VIRIDIAN_CITY = {
       ask(game, t._ViridianCityYoungster2YouWantToKnowAboutText
         or "You want to know\nabout the 2 kinds\vof caterpillar\vPOKéMON?", function(yes)
         if yes then
-          push(game, "CATERPIE has no\npoison, but\vWEEDLE does.\fWatch out for its\nPOISON STING!", done)
+          push(game, Strings("CATERPIE has no\npoison, but\vWEEDLE does.\fWatch out for its\nPOISON STING!"), done)
         else
-          push(game, "Oh, OK then!", done)
+          push(game, Strings("Oh, OK then!"), done)
         end
       end)
     end,
