@@ -1,6 +1,7 @@
 ﻿[CmdletBinding()]
 param(
     [switch]$Check,
+    [switch]$IncludeDrafts,
     [string]$Workbook,
     [string]$MainLua
 )
@@ -55,6 +56,9 @@ $Arguments += @($Importer, $Workbook, $MainLua)
 if ($Check) {
     $Arguments += "--check"
 }
+if ($IncludeDrafts) {
+    $Arguments += "--include-drafts"
+}
 
 Write-Host "Workbook: $Workbook"
 Write-Host "Target:   $MainLua"
@@ -62,6 +66,11 @@ if ($Check) {
     Write-Host "Mode:     validation only"
 } else {
     Write-Host "Mode:     import"
+}
+if ($IncludeDrafts) {
+    Write-Host "Rows:     Import=Yes plus Status=Draft"
+} else {
+    Write-Host "Rows:     Import=Yes"
 }
 Write-Host ""
 

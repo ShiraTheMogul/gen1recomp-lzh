@@ -991,9 +991,12 @@ end
 
 -- insert message right after the currently-executing queue item (the
 -- counter is reset by updateQueue before each fn item runs)
-function BattleState:sayNext(text)
+function BattleState:sayNext(text, preserveNewlines)
   self.nextInsert = (self.nextInsert or 0) + 1
-  table.insert(self.queue, self.nextInsert, { text = text })
+  table.insert(self.queue, self.nextInsert, {
+    text = text,
+    preserveNewlines = preserveNewlines == true,
+  })
 end
 
 function BattleState:sayNextWaitSfx(text, sfx)
@@ -1172,7 +1175,9 @@ function BattleState:startMessage(item)
   self.total = 0
   local text = item.text or ""
   local eastAsian = battleUsesTTFText(text)
-  if eastAsian then text = text:gsub("\n", "") end
+  if eastAsian and not item.preserveNewlines then
+    text = text:gsub("\n", "")
+  end
 
   local pages = TextBox.paginate(text, 18, {
     -- An auto battle row (for example "used X") must not acquire a new
@@ -4276,7 +4281,13 @@ function BattleState:enemyMonFainted()
       local tag = self.trainer and self.trainer.name
       for page in (self.endBattleText .. "\f"):gmatch("(.-)\f") do
         if page ~= "" then
-          self:sayNext(tag and (tag .. ": " .. page) or page)
+          if tag and battleUsesTTFText(tag .. page) then
+            -- A translated trainer tag is a semantic first line.  Keep that
+            -- line break instead of feeding it through the normal CJK reflow.
+            self:sayNext(tag .. "：\n" .. page, true)
+          else
+            self:sayNext(tag and (tag .. ": " .. page) or page)
+          end
           tag = nil
         end
       end

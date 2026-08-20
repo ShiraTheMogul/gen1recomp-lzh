@@ -41,6 +41,16 @@ local function entryName(e, mapId)
   return name or mapId:gsub("_", " ")
 end
 
+-- Town-map location labels used to be edited only in generated field data.
+-- A stale generated-data cache can therefore put the English labels back.
+-- Ask the mod string registry for a map-id-specific name first, then fall
+-- through to the extracted label when no translation has been supplied.
+local function localizedEntryName(e, mapId)
+  local translated = Strings(mapId, "townmap")
+  if translated ~= mapId then return translated end
+  return entryName(e, mapId)
+end
+
 local function isRoute(loc)
   return loc.route == true or loc.name:find("ROUTE", 1, true) ~= nil
 end
@@ -61,7 +71,7 @@ local function buildLocations(game)
     for mapId, e in pairs(townMap) do
       local x, y = entryCoords(e)
       if x and y then
-        local name = entryName(e, mapId)
+        local name = localizedEntryName(e, mapId)
         local key = ("%s:%d:%d"):format(name, x, y)
         local loc = seen[key]
         if not loc then
@@ -96,7 +106,7 @@ local function buildLocations(game)
     if not seen[mapId] and def
        and (Map.isOutdoor(def) or def.tileset == "PLATEAU") then
       seen[mapId] = true
-      local loc = { name = mapId:gsub("_", " ") }
+      local loc = { name = localizedEntryName(nil, mapId) }
       table.insert(locs, loc)
       byMap[mapId] = loc
     end
