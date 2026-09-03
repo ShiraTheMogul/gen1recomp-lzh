@@ -14,6 +14,7 @@ local Menu = require("src.ui.Menu")
 local QuantityBox = require("src.ui.QuantityBox")
 local Strings = require("src.core.Strings")
 local HanNumber = require("src.render.HanNumber")
+local romText = require("src.core.RomText")
 
 local ShopMenu = {}
 
@@ -58,8 +59,16 @@ local function buy(game, stock)
             return
           end
           local cost = qty * def.price
-          -- _PokemartTellBuyPriceText + yes/no confirm
-          list.footer = Strings("%s?\nThat will be\n¥%d. OK?", def.name, cost)
+          -- _PokemartTellBuyPriceText + yes/no confirm.  The extracted
+          -- text carries an item slot and a numeric slot; substitute the
+          -- latter as prose Han numerals in the localization.
+          if game.data.text and game.data.text._PokemartTellBuyPriceText then
+            list.footer = romText(game.data, "_PokemartTellBuyPriceText",
+              "%s?\nThat will be\n¥%d. OK?",
+              def.name, HanNumber.prose(cost))
+          else
+            list.footer = Strings("%s?\nThat will be\n¥%d. OK?", def.name, cost)
+          end
           game.stack:push(ChoiceBox.new(game, function(yes)
             if not yes then
               list.footer = greet
@@ -148,8 +157,14 @@ local function sell(game)
             list.footer = greet
             return
           end
-          -- _PokemartTellSellPriceText + yes/no confirm
-          list.footer = Strings("I can pay you\n¥%d for that.", unit * qty)
+          -- _PokemartTellSellPriceText + yes/no confirm.
+          local sale = unit * qty
+          if game.data.text and game.data.text._PokemartTellSellPriceText then
+            list.footer = romText(game.data, "_PokemartTellSellPriceText",
+              "I can pay you\n¥%d for that.", HanNumber.prose(sale))
+          else
+            list.footer = Strings("I can pay you\n¥%d for that.", sale)
+          end
           game.stack:push(ChoiceBox.new(game, function(yes)
             if not yes then
               list.footer = greet

@@ -257,14 +257,19 @@ function ListMenu:draw()
     end
   end
   if self.dialogue then
-    -- money box (DisplayTextBoxID MONEY_BOX, hlcoord 11,0): the amount
-    -- right-aligned on its middle row
-    Font.drawBox(11, 0, 9, 3)
-    love.graphics.setColor(0, 0, 0, 1)
+    -- MONEY_BOX is 9 tiles wide in the ROM.  Written Han cardinals need
+    -- more room as place-value markers appear, so keep the right edge fixed
+    -- and grow the box leftward to fit the amount plus one tile of padding.
     local money = HanNumber.format(self.money and self.money() or 0)
       .. Strings("CURRENCY_UNIT")
     local moneySize = 10
-    Font.drawSized(money, 152 - Font.widthSized(money, moneySize), 7, moneySize)
+    local moneyWidth = Font.widthSized(money, moneySize)
+    local moneyTw = math.max(9, math.ceil((moneyWidth + 8) / 8) + 2)
+    moneyTw = math.min(20, moneyTw)
+    local moneyTx = 20 - moneyTw
+    Font.drawBox(moneyTx, 0, moneyTw, 3)
+    love.graphics.setColor(0, 0, 0, 1)
+    Font.drawSized(money, 152 - moneyWidth, 7, moneySize)
   end
   if self.dialogue or (self.messageBox and self.footer) then
     -- standard bottom text box (PrintText); long prompts wrap and keep

@@ -53,8 +53,10 @@ end
 
 local function boardRowY(row)
   if boardUsesLargeGlyphs() then
-    -- Three 16px rows exactly fill the 48px interior of the 12x8 box.
-    return (1 + (row - 1) * 2) * 8
+    -- Wenjin's visible Han body sits a touch high inside its 16px em.
+    -- Nudge the large-glyph board rows (and cursor) down one pixel only;
+    -- the 8px vanilla layout stays byte-for-byte aligned.
+    return (1 + (row - 1) * 2) * 8 + 1
   end
   return (BOARD_ROW_Y + row - 1) * 8
 end

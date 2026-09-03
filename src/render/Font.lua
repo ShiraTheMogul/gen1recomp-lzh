@@ -1,4 +1,4 @@
--- Text renderer using the real extracted font sheets and charmap.
+﻿-- Text renderer using the real extracted font sheets and charmap.
 -- Glyphs live on *pages*: font.png holds codes $80-$FF, font_extra.png
 -- $60-$7F (borders etc), and a mod registers more (a kana block at $100,
 -- a replacement sheet for an existing page) through the font registry,
@@ -486,14 +486,15 @@ local function drawPrivateFive(x, y, size)
   size = math.max(8, math.floor(size or GLYPH))
   local x0 = x + 1
   local w = math.max(5, size - 2)
-  local rows
-  if size <= 12 then
-    rows = { 1, 3, 6, 8, 10 }
-  else
-    rows = { 1, 4, 8, 11, 14 }
-  end
-  for _, dy in ipairs(rows) do
-    if dy < size then love.graphics.rectangle("fill", x0, y + dy, w, 1) end
+
+  -- Keep all five strokes inside the requested em.  The old fixed row list
+  -- put its fifth stroke at y=10 for a 10px numeral, then `dy < size`
+  -- discarded it; the result was literally a four-stroke "5" in HUDs.
+  -- Even spacing from row 1 through size-1 guarantees five visible bars at
+  -- every supported small size without making each caller special-case 5.
+  for i = 0, 4 do
+    local dy = math.floor(1 + (size - 2) * i / 4 + 0.5)
+    love.graphics.rectangle("fill", x0, y + dy, w, 1)
   end
 end
 

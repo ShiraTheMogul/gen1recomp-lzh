@@ -42,20 +42,27 @@ function QuantityBox:update(dt)
 end
 
 function QuantityBox:draw()
-  -- DisplayChooseQuantityMenu (home/list_menu.asm): non-priced box at
-  -- hlcoord 15,9 (interior 3x1); priced at hlcoord 7,9 (interior 11x1).
-  -- TextBoxBorder adds the frame, so outer size is +2 on each axis.
-  local tw = self.unitPrice and 13 or 5
-  local tx = self.unitPrice and 7 or 15
+  -- DisplayChooseQuantityMenu (home/list_menu.asm) used fixed 3- and
+  -- 11-tile interiors.  Han quantity/cost strings are wider, especially
+  -- once place-value markers appear, so retain the right edge and grow the
+  -- frame leftward from a sensible vanilla-derived minimum.
   local ty = 9
-  Font.drawBox(tx, ty, tw, 3)
-  love.graphics.setColor(0, 0, 0, 1)
+  local size = 10
   local s = "×" .. HanNumber.digits(self.qty, 2) -- preserve the 2-place selector
   if self.unitPrice then
     s = s .. " " .. HanNumber.format(self.qty * self.unitPrice)
       .. Strings("CURRENCY_UNIT")
   end
-  Font.drawSized(s, (tx + 1) * 8, (ty + 1) * 8 - 1, 10)
+
+  local textWidth = Font.widthSized(s, size)
+  local minTw = self.unitPrice and 13 or 7
+  local tw = math.max(minTw, math.ceil((textWidth + 8) / 8) + 2)
+  tw = math.min(20, tw)
+  local tx = 20 - tw
+
+  Font.drawBox(tx, ty, tw, 3)
+  love.graphics.setColor(0, 0, 0, 1)
+  Font.drawSized(s, (tx + 1) * 8, (ty + 1) * 8 - 1, size)
   love.graphics.setColor(1, 1, 1, 1)
 end
 

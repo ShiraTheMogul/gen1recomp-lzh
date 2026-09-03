@@ -26,6 +26,7 @@ local Warp = require("src.world.Warp")
 local Zoom = require("src.render.Zoom")
 local romText = require("src.core.RomText")
 local Strings = require("src.core.Strings")
+local HanNumber = require("src.render.HanNumber")
 
 -- isOverworld marks the live world state for WorldAPI's stack scan
 local OverworldState = { isOpaque = true, isOverworld = true }
@@ -2016,7 +2017,8 @@ function OverworldState:tryHiddenObject(fx, fy)
         -- leaves the spot unfound; _CantCarryMoreText is the Toss line (#872)
         local name = Game.data.items[h.item] and Game.data.items[h.item].name or h.item
         Game.stack:push(TextBox.new(Game,
-          Strings("%s found\n%s!", save.player.name, name) .. "\f"
+          romText(Game.data, "_FoundHiddenItemText", "%s found\n%s!",
+            save.player.name, name) .. "\f"
           .. romText(Game.data, "_HiddenItemBagFullText",
                      "But, {PLAYER} has\nno more room for\vother items!")))
         return true
@@ -2027,8 +2029,8 @@ function OverworldState:tryHiddenObject(fx, fy)
       -- text_asm tail runs it as PlaySoundWaitForCurrent +
       -- WaitForSoundToFinish once the box has printed (hidden_items.asm)
       Game.stack:push(TextBox.new(Game,
-        Strings("%s found\n%s!", save.player.name, name),
-        nil, TextBox.soundOpts(Game, "Get_Item2")))
+        romText(Game.data, "_FoundHiddenItemText", "%s found\n%s!",
+          save.player.name, name), nil, TextBox.soundOpts(Game, "Get_Item2")))
       return true
     end
   end
@@ -2041,7 +2043,8 @@ function OverworldState:tryHiddenObject(fx, fy)
       save.hiddenTaken[key] = true
       save.coins = math.min(9999, (save.coins or 0) + h.coins)
       Game.stack:push(TextBox.new(Game,
-        Strings("%s found\n%d coins!", save.player.name, h.coins),
+        romText(Game.data, "_FoundHiddenCoinsText", "%s found\n%s coins!",
+          save.player.name, HanNumber.prose(h.coins)),
         nil, TextBox.soundOpts(Game, "Get_Item2")))
       return true
     end
@@ -2673,8 +2676,8 @@ function OverworldState:talkTo(npc)
         "No more room for\nitems!")
       if GameVersion.isYellow() then
         local name = Game.data.items[d.item] and Game.data.items[d.item].name or d.item
-        noRoom = Strings("%s found\n%s!", Game.save.player.name, name)
-                 .. "\f" .. noRoom
+        noRoom = romText(Game.data, "_FoundItemText", "%s found\n%s!",
+                   Game.save.player.name, name) .. "\f" .. noRoom
       end
       Game.stack:push(TextBox.new(Game, noRoom))
       return
@@ -2691,8 +2694,8 @@ function OverworldState:talkTo(npc)
     local ddef = Game.data.items[d.item]
     -- FoundItemText: text_far, sound_get_item_1, text_end (pick_up_item.asm)
     Game.stack:push(TextBox.new(Game,
-      Strings("%s found\n%s!", Game.save.player.name, name), nil,
-      TextBox.soundOpts(Game,
+      romText(Game.data, "_FoundItemText", "%s found\n%s!",
+        Game.save.player.name, name), nil, TextBox.soundOpts(Game,
         (ddef and ddef.keyItem) and "Get_Key_Item" or "Get_Item1")))
     return
   end

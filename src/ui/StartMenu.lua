@@ -12,6 +12,7 @@ local Renderer = require("src.render.Renderer")
 local Runtime = require("src.mods.Runtime")
 local Screens = require("src.ui.Screens")
 local Strings = require("src.core.Strings")
+local romText = require("src.core.RomText")
 
 local StartMenu = {}
 
@@ -74,7 +75,8 @@ function StartMenu.new(game)
         math.floor(t / 3600), math.floor(t / 60) % 60)
     end
     game.stack:push(TextBox.new(game,
-      panel .. Strings("\fWould you like to\nSAVE the game?"), nil, {
+      panel .. "\f" .. romText(game.data, "_WouldYouLikeToSaveText",
+        "Would you like to\nSAVE the game?"), nil, {
       choice = function(yes)
         if not yes then return end
         -- SaveMenu .save (engine/menus/save.asm:164-181): "Now saving..."
@@ -87,7 +89,8 @@ function StartMenu.new(game)
         game.stack:push(TextBox.new(game, Strings("Now saving..."), function()
           game:writeSave()
           game.stack:push(TextBox.new(game,
-            Strings("%s saved\nthe game!", game.save.player.name or "RED"),
+            romText(game.data, "_GameSavedText", "%s saved\nthe game!",
+              game.save.player.name or "RED"),
             nil, { auto = {
               sound = function()
                 return require("src.core.Sound").play(game.data, "Save")

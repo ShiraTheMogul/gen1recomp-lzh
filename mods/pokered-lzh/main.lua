@@ -1128,7 +1128,7 @@
     ["_ViridianCityFisherTM42NoRoomText"] = "行囊已滿，不可復納。", -- ViridianCity
     ["_ViridianCityOldManHadMyCoffeeNowText"] = "嗯……適醉甚矣！頭痛甚矣……子有急乎？", -- ViridianCity
     ["_ViridianCityOldManKnowHowToCatchPokemonText"] = "見子用㬺獸記機。獲一獸，其錄自增。何？不知獲獸之法乎？吾示子。", -- ViridianCity
-    ["_ViridianCityOldManTimeIsMoneyText"] = "時即金也……行矣。", -- ViridianCity
+    ["_ViridianCityOldManTimeIsMoneyText"] = "一刻千金……行矣。", -- ViridianCity
     ["_ViridianCityOldManYouNeedToWeakenTheTargetText"] = "先弱其獸，乃可獲之。", -- ViridianCity
     ["_ViridianCitySignText"] = "碧邑\n長青樂土", -- ViridianCity
     ["_ViridianCityTrainerTips1Text"] = "㬺獸士須知\n多獲㬺獸，以廣所藏！獸愈多，戰愈便！", -- ViridianCity
@@ -3293,12 +3293,12 @@
     ["_PokemonFaintedText"] = "{RAM:wNameBuffer}仆倒！", -- Draft
     ["_RepelWoreOffText"] = "驅獸劑之效已盡。", -- Draft
     ["_PokemartBuyingGreetingText"] = "徐徐選之。", -- Draft
-    ["_PokemartTellBuyPriceText"] = "{RAM:wStringBuffer}？價{NUM:hMoney, 3 | LEADING_ZEROES | LEFT_ALIGN}円，可乎？", -- Draft
+    ["_PokemartTellBuyPriceText"] = "{RAM:wStringBuffer}？價{NUM:hMoney, 3 | LEADING_ZEROES | LEFT_ALIGN}元，可乎？", -- Draft
     ["_PokemartBoughtItemText"] = "奉上！多謝。", -- Draft
     ["_PokemartNotEnoughMoneyText"] = "錢不足。", -- Draft
     ["_PokemartItemBagFullText"] = "行囊已滿。", -- Draft
     ["_PokemonSellingGreetingText"] = "欲售何物？", -- Draft
-    ["_PokemartTellSellPriceText"] = "此物可售{NUM:hMoney, 3 | LEADING_ZEROES | LEFT_ALIGN}円。", -- Draft
+    ["_PokemartTellSellPriceText"] = "此物可售{NUM:hMoney, 3 | LEADING_ZEROES | LEFT_ALIGN}元。", -- Draft
     ["_PokemartItemBagEmptyText"] = "無物可售。", -- Draft
     ["_PokemartUnsellableItemText"] = "此物不可估價。", -- Draft
     ["_PokemartThankYouText"] = "多謝！", -- Draft
@@ -3419,6 +3419,13 @@
   }
   for id, text in pairs(workspaceText) do
     mod.content.text:override(id, text)
+  end
+  local workspaceStrings = {
+    ["Nothing here."] = "無物", -- Menus
+    ["How many?"] = "幾何？", -- PlayerPC
+  }
+  for source, text in pairs(workspaceStrings) do
+    mod.content.strings:override(source, text)
   end
   -- END AUTO-GENERATED TEXT WORKSPACE
 
